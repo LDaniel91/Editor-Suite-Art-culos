@@ -1,0 +1,1428 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Editorial Suite — Multi-Formato para Revistas Científicas</title>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+<style>
+  :root{
+    --bg:#0b1119;--panel:#131b26;--panel2:#1c2636;--border:#283446;
+    --text:#e8ecf2;--muted:#8794a8;--primary:#0ea5a4;--primary-h:#0d8a89;
+    --accent:#38bdf8;--ok:#10b981;--warn:#f59e0b;--err:#ef4444;--purple:#8b5cf6;
+    --radius:10px;--mono:'JetBrains Mono','Fira Code',Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;display:flex;flex-direction:column;overflow:hidden}
+  .topbar{display:flex;align-items:center;gap:16px;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--border)}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px}
+  .brand .logo{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:linear-gradient(135deg,#0ea5a4,#38bdf8);font-size:15px}
+  .brand .tag{font-size:11px;color:var(--muted);font-weight:500;background:var(--panel2);padding:2px 8px;border-radius:20px;border:1px solid var(--border)}
+  .spacer{flex:1}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;transition:.15s;font-family:inherit}
+  .btn:hover:not(:disabled){background:#243346;border-color:#3a4a60}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+  .btn.primary:hover:not(:disabled){background:var(--primary-h)}
+  .btn.ghost{background:transparent}
+  .workspace{flex:1;display:grid;grid-template-columns:minmax(380px,1fr) 1.3fr;overflow:hidden;min-height:0}
+  .pane{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border)}
+  .pane:last-child{border-right:none}
+  .pane-head{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--border)}
+  .pane-head h3{font-size:12px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+  .pane-head .badge{font-size:11px;color:var(--muted);background:var(--panel2);padding:2px 8px;border-radius:20px;border:1px solid var(--border);font-family:var(--mono)}
+  .pane-head .badge.ok{color:var(--ok);border-color:rgba(16,185,129,.4);background:rgba(16,185,129,.1)}
+  .pane-head .badge.warn{color:var(--warn);border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.1)}
+  .pane-head .badge.err{color:var(--err);border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.1)}
+  .pane-body{flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto}
+  .section{padding:14px 16px;border-bottom:1px solid var(--border)}
+  .section-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .targets{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+  .target{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px 8px;cursor:pointer;text-align:center;transition:.15s;font-size:11px}
+  .target:hover{background:#243346;border-color:#3a4a60}
+  .target.active{background:rgba(14,165,164,.15);border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+  .target .icon{font-size:20px;display:block;margin-bottom:4px}
+  .target .name{font-weight:600;color:var(--text)}
+  .target .db-type{font-size:9px;color:var(--muted);margin-top:2px;font-family:var(--mono)}
+  .formats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .format{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px 6px;cursor:pointer;text-align:center;transition:.15s;font-size:11px;user-select:none}
+  .format:hover{background:#243346}
+  .format.checked{background:rgba(14,165,164,.15);border-color:var(--primary)}
+  .format .icon{font-size:18px;display:block;margin-bottom:2px}
+  .format .ext{font-weight:700;font-family:var(--mono);font-size:11px}
+  textarea{width:100%;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:var(--mono);font-size:11px;padding:10px;border-radius:8px;resize:vertical;outline:none;line-height:1.5;min-height:80px}
+  textarea:focus{border-color:var(--primary)}
+  .input-block .subhead{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:11px;color:var(--muted)}
+  .mini-btn{font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid var(--border);background:var(--panel);color:var(--muted);cursor:pointer;font-family:inherit}
+  .mini-btn:hover{color:var(--text);background:#243346}
+  .tabs{display:flex;gap:2px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--border);overflow-x:auto}
+  .tab{padding:10px 14px;background:transparent;border:none;color:var(--muted);font-size:12px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;font-family:inherit;white-space:nowrap}
+  .tab.active{color:var(--text);border-bottom-color:var(--primary)}
+  .tab:hover:not(.active){color:var(--text)}
+  .tab .dot{width:6px;height:6px;border-radius:50%;background:var(--muted);display:inline-block;margin-left:6px}
+  .tab .dot.ok{background:var(--ok)}
+  .tab .dot.warn{background:var(--warn)}
+  .tab .dot.err{background:var(--err)}
+  .tab-content{flex:1;position:relative;min-height:0;overflow:auto;display:flex;flex-direction:column}
+  .tab-panel{display:none;height:100%;flex-direction:column;min-height:0}
+  .tab-panel.active{display:flex}
+  .code-view{font-family:var(--mono);font-size:11px;line-height:1.6;padding:14px;white-space:pre-wrap;word-break:break-word;color:#c9d1d9;overflow:auto;flex:1;background:#0a0e14}
+  .code-view .tag{color:#7ee787}
+  .code-view .attr{color:#79c0ff}
+  .code-view .str{color:#a5d6ff}
+  .code-view .cmt{color:#8b949e;font-style:italic}
+  .code-view .pi{color:#ffa657}
+  .code-view .dt{color:#ff7b72}
+  .empty-output{flex:1;display:grid;place-items:center;color:var(--muted);text-align:center;padding:40px;font-size:12px}
+  .empty-output .icon{font-size:42px;margin-bottom:12px;opacity:.5}
+  iframe.preview-frame{flex:1;width:100%;border:none;background:#fff}
+  .actionbar{display:flex;align-items:center;gap:12px;padding:12px 20px;background:var(--panel);border-top:1px solid var(--border);flex-wrap:wrap}
+  .status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .status .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+  .status.running .dot{background:var(--warn);animation:pulse 1.4s infinite}
+  .status.ok .dot{background:var(--ok)}
+  .status.err .dot{background:var(--err)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite;display:none}
+  .status.running .spinner{display:inline-block}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .progress-bar{flex:1;max-width:300px;height:6px;background:var(--panel2);border-radius:3px;overflow:hidden;margin-left:8px}
+  .progress-bar .fill{height:100%;background:linear-gradient(90deg,var(--primary),var(--accent));width:0%;transition:width .3s}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;place-items:center;z-index:100;padding:24px}
+  .modal.open{display:grid}
+  .modal-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);width:100%;max-width:820px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+  .modal-head h2{font-size:16px;font-weight:600}
+  .modal-body{padding:20px;overflow:auto;flex:1}
+  .modal-foot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid var(--border)}
+  .field{margin-bottom:16px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px;font-weight:600}
+  .field input,.field select,.field textarea{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px;font-family:inherit}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--primary)}
+  .field small{display:block;color:var(--muted);font-size:11px;margin-top:4px}
+  .field textarea{font-family:var(--mono);font-size:11px;min-height:280px;resize:vertical}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .close-btn{background:transparent;border:none;color:var(--muted);font-size:22px;cursor:pointer;padding:4px 10px;border-radius:6px;line-height:1}
+  .close-btn:hover{background:var(--panel2);color:var(--text)}
+  @media (max-width:1000px){.workspace{grid-template-columns:1fr;grid-template-rows:1fr 1fr}.pane{border-right:none;border-bottom:1px solid var(--border)}}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:var(--bg)}
+  ::-webkit-scrollbar-thumb{background:#283446;border-radius:5px}
+  ::-webkit-scrollbar-thumb:hover{background:#3a4a60}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="logo">🧬</div>
+    Editorial Suite <span class="tag">Multi-Formato v1.1</span>
+  </div>
+  <div class="spacer"></div>
+  <button class="btn ghost" id="btn-prompt">📝 Prompts</button>
+  <button class="btn ghost" id="btn-settings">⚙ Configuración</button>
+</div>
+
+<div class="workspace">
+  <!-- ══════════ ENTRADA ══════════ -->
+  <div class="pane">
+    <div class="pane-head">
+      <h3>📥 Entrada</h3>
+      <div class="spacer"></div>
+      <span class="badge" id="in-chars">0 chars</span>
+    </div>
+    <div class="pane-body">
+      <!-- Selector de destino -->
+      <div class="section">
+        <div class="section-title">🎯 Base de datos / Revista destino</div>
+        <div class="targets" id="targets-grid"></div>
+      </div>
+
+      <!-- Selector de formatos -->
+      <div class="section">
+        <div class="section-title">📦 Formatos a generar</div>
+        <div class="formats" id="formats-grid">
+          <div class="format" data-format="xml"><span class="icon">🧾</span><span class="ext">XML</span></div>
+          <div class="format" data-format="html"><span class="icon">💻</span><span class="ext">HTML</span></div>
+          <div class="format" data-format="pdf"><span class="icon">📄</span><span class="ext">PDF</span></div>
+          <div class="format" data-format="epub"><span class="icon">📖</span><span class="ext">EPUB</span></div>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px">PDF y EPUB se derivan del HTML (requiere HTML marcado).</div>
+      </div>
+
+      <!-- Artículo fuente -->
+      <div class="section input-block" id="article-block">
+        <div class="subhead">
+          <strong>📄 Artículo fuente</strong>
+          <span>(texto completo)</span>
+          <div class="spacer"></div>
+          <button class="mini-btn" data-load="article">Cargar</button>
+          <button class="mini-btn" data-clear="article">Limpiar</button>
+        </div>
+        <textarea id="article-input" style="min-height:140px" placeholder="Pega aquí el artículo completo. Formatos permitidos: .txt, .md, .docx (Word). NO se recomiendan PDFs."></textarea>
+      </div>
+
+      <!-- Plantilla HTML -->
+      <div class="section input-block" id="template-block">
+        <div class="subhead">
+          <strong>🎨 Plantilla HTML de referencia</strong>
+          <span>(CSS de la revista)</span>
+          <div class="spacer"></div>
+          <button class="mini-btn" data-load="template">Cargar</button>
+          <button class="mini-btn" data-clear="template">Limpiar</button>
+        </div>
+        <textarea id="template-input" style="min-height:100px" placeholder="Pega el HTML de referencia de la revista (con el bloque <style>). Si lo dejas vacío, se usará una plantilla editorial por defecto."></textarea>
+      </div>
+
+      <!-- Esquema / notas -->
+      <div class="section">
+        <div class="subhead">
+          <strong>📋 Notas / esquema adicional</strong>
+          <span>(opcional)</span>
+        </div>
+        <textarea id="schema-input" style="min-height:60px" placeholder="Ej: revista MEDISAN, ISSN 1029-3019, español principal."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ SALIDA ══════════ -->
+  <div class="pane">
+    <div class="pane-head">
+      <h3>📤 Resultado</h3>
+      <div class="spacer"></div>
+      <span class="badge" id="out-chars">0 chars</span>
+    </div>
+    <div class="pane-body">
+      <div class="tabs" id="tabs">
+        <button class="tab active" data-tab="xml">🧾 XML <span class="dot" id="dot-xml"></span></button>
+        <button class="tab" data-tab="html">💻 HTML <span class="dot" id="dot-html"></span></button>
+        <button class="tab" data-tab="pdf">📄 PDF <span class="dot" id="dot-pdf"></span></button>
+        <button class="tab" data-tab="epub">📖 EPUB <span class="dot" id="dot-epub"></span></button>
+        <button class="tab" data-tab="raw">📋 Raw <span class="dot" id="dot-raw"></span></button>
+        <button class="tab" data-tab="package">📦 Paquete</button>
+      </div>
+      <div class="tab-content">
+        <div class="tab-panel active" id="tab-xml">
+          <div class="empty-output" id="xml-empty"><div><div class="icon">🧾</div><div>El XML aparecerá aquí</div></div></div>
+          <div class="code-view" id="xml-view" style="display:none"></div>
+        </div>
+        <div class="tab-panel" id="tab-html">
+          <div class="empty-output" id="html-empty"><div><div class="icon">💻</div><div>El HTML aparecerá aquí</div></div></div>
+          <iframe class="preview-frame" id="html-preview" style="display:none" sandbox="allow-same-origin"></iframe>
+        </div>
+        <div class="tab-panel" id="tab-pdf">
+          <div class="empty-output" id="pdf-empty"><div><div class="icon">📄</div><div>El PDF se generará automáticamente</div></div></div>
+          <div id="pdf-container" style="display:none;flex:1;padding:20px;overflow:auto;background:#525659"></div>
+        </div>
+        <div class="tab-panel" id="tab-epub">
+          <div class="empty-output" id="epub-empty"><div><div class="icon">📖</div><div>El EPUB se generará automáticamente desde el HTML</div></div></div>
+          <div class="code-view" id="epub-view" style="display:none"></div>
+        </div>
+        <div class="tab-panel" id="tab-raw">
+          <div class="code-view" id="raw-view"></div>
+        </div>
+        <div class="tab-panel" id="tab-package">
+          <div class="empty-output" id="package-empty"><div><div class="icon">📦</div><div>Descarga el paquete completo con todos los archivos</div></div></div>
+          <div id="package-info" style="display:none;padding:20px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="actionbar">
+  <button class="btn primary" id="btn-convert" style="padding:10px 22px;font-size:14px">▶ Generar archivos</button>
+  <div class="status" id="status">
+    <span class="dot"></span>
+    <span class="spinner"></span>
+    <span id="status-text">Listo</span>
+  </div>
+  <div class="progress-bar"><div class="fill" id="progress-fill"></div></div>
+  <div class="spacer"></div>
+  <button class="btn" id="btn-download-zip" disabled>💾 Descargar ZIP</button>
+  <button class="btn ghost" id="btn-clear-all">🗑 Limpiar</button>
+</div>
+
+<!-- ══════════ SETTINGS MODAL ══════════ -->
+<div class="modal" id="settings-modal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2>⚙ Configuración</h2>
+      <button class="close-btn" data-close="settings-modal">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Proveedor de IA</label>
+        <select id="cfg-provider">
+          <option value="anthropic">Anthropic Claude (recomendado)</option>
+          <option value="openai">OpenAI GPT</option>
+          <option value="gemini">Google Gemini</option>
+          <option value="deepseek">DeepSeek</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Modelo</label>
+        <select id="cfg-model"></select>
+        <small id="cfg-model-hint"></small>
+      </div>
+      <div class="field">
+        <label>API Key</label>
+        <input type="password" id="cfg-apikey" placeholder="Introduce tu API key...">
+        <small>🔒 Se guarda solo en tu navegador (localStorage).</small>
+      </div>
+      <div class="row">
+        <div class="field"><label>Max Tokens</label><input type="number" id="cfg-maxtokens" min="1024" max="200000" step="1024" value="8192"></div>
+        <div class="field"><label>Temperatura</label><input type="number" id="cfg-temp" min="0" max="1" step="0.05" value="0.15"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close="settings-modal">Cancelar</button>
+      <button class="btn primary" id="btn-save-settings">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ PROMPT MODAL ══════════ -->
+<div class="modal" id="prompt-modal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2>📝 Prompt del sistema por base de datos</h2>
+      <button class="close-btn" data-close="prompt-modal">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Base de datos a personalizar</label>
+        <select id="prompt-target"></select>
+      </div>
+      <div class="field">
+        <label>Tipo de prompt</label>
+        <select id="prompt-type">
+          <option value="xml">XML / Metadatos</option>
+          <option value="html">HTML (meta tags específicos)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Contenido del prompt</label>
+        <textarea id="prompt-text"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btn-reset-prompt">↺ Restaurar</button>
+      <button class="btn primary" id="btn-save-prompt">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept=".txt,.md,.html,.htm,.xml,.json,.csv,.docx" style="display:none">
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   PROMPTS POR BASE DE DATOS
+══════════════════════════════════════════════════════════════ */
+const COMMON_RULES = `REGLAS INVIOLABLES:
+- Conserva el 100% del texto original. No resumas, traduzcas, reformules ni omitas.
+- No inventes datos, autores, fechas, cifras ni referencias.
+- Conserva el orden de secciones, autores, referencias, figuras y tablas.
+- Conserva tildes, diéresis, comillas tipográficas, guiones y caracteres especiales.
+- Escapa correctamente entidades XML/HTML (&amp; &lt; &gt; &quot; &apos;).
+- Si falta un dato, deja el elemento vacío o un comentario <!-- FALTA: X -->. No inventes.
+- No añadas texto generado por IA (ni introducciones, ni cierres).`;
+
+const COMMON_HTML_BASE = `ACTÚA COMO MAQUETADOR EDITORIAL CIENTÍFICO SENIOR, ESPECIALISTA EN HTML5 SEMÁNTICO, ACCESIBILIDAD (WCAG 2.2) Y PUBLICACIÓN ACADÉMICA.
+
+Recibirás al final: PLANTILLA_HTML (referencia visual) y ARTICULO_FUENTE (documento a convertir).
+
+OBJETIVO: Convertir el ARTICULO_FUENTE en HTML5 completo, válido, semántico y accesible que reproduzca con fidelidad absoluta:
+- El 100% del contenido textual.
+- La estructura y jerarquía visual de la PLANTILLA_HTML.
+- El CSS de la plantilla (bloque <style> íntegro).
+- La apariencia editorial de la revista.
+
+MAPEO SEMÁNTICO OBLIGATORIO:
+- <article> para el artículo completo; <header> cabecera; <section> por sección; <footer> pie; <aside> material complementario.
+- Jerarquía: <h1> título, <h2> secciones, <h3> subsecciones, <h4> subniveles.
+- Párrafos <p>; listas <ol>/<ul>/<li>; <strong>/<em>; <blockquote>/<cite>.
+- <sup>/<sub> para exponentes, iones, unidades, afiliaciones.
+- Tablas: <table>, <caption>, <thead>, <tbody>, <tfoot>, <tr>, <th>, <td> con scope.
+- Figuras: <figure><img alt="..."><figcaption>...</figcaption></figure>.
+- Fórmulas: <sup>/<sub> + Unicode; complejas en MathML.
+- Referencias: <ol><li> con DOI/URL como enlaces.
+- Prohibido: <center>, <font>, <b>, <i> decorativos, <br> para maquetar.
+
+ACCESIBILIDAD: alt descriptivo en imágenes, scope en tablas, lang por bloque si es bilingüe, etiquetas cerradas, sin id duplicados. HTML5 válido W3C.
+
+${COMMON_RULES}
+
+Devuelve EXCLUSIVAMENTE el HTML completo, desde <!DOCTYPE html> hasta </html>, con CSS embebido en <style> en el <head>. Sin explicaciones, sin Markdown.`;
+
+const TARGETS = {
+  scielo: {
+    name: 'SciELO', icon: '📘', type: 'JATS SPS',
+    xmlFile: 'articulo-scielo.xml',
+    xmlPrompt: `ACTÚA COMO ESPECIALISTA EN XML JATS Y SCIELO PUBLISHING SCHEMA (SPS).
+
+Genera un archivo XML JATS válido según el SciELO Publishing Schema (SPS) para el artículo.
+
+ESTRUCTURA OBLIGATORIA:
+<article article-type="research-article" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <front>
+    <journal-meta>: <journal-id>, <journal-title>, <issn pub-type="ppub">, <issn pub-type="epub">, <publisher><publisher-name><publisher-loc>
+    <article-meta>: <article-id pub-id-type="doi">, <article-id pub-id-type="publisher-id">, <article-categories>, <title-group> con <article-title> + <trans-title>, <contrib-group> con ORCID (<contrib-id contrib-id-type="orcid">), <aff> completa, <email>, <pub-date date-type="received">, <pub-date date-type="accepted">, <pub-date date-type="published">, <volume>, <issue>, <fpage>/<lpage>/<elocation-id>, <abstract> + <trans-abstract>, <kwd-group kwd-group-type="author">, <permissions><license>
+  </front>
+  <body>: <sec> anidadas (Introducción, Métodos, Resultados, Discusión, Conclusiones), párrafos <p>, <xref ref-type="bibr">, <disp-formula> MathML si aplica
+  <back>: <ref-list> con <ref><mixed-citation> o <element-citation> (DOI, PMID, URL preservados), <ack>, <fn-group>
+  <floats-group>: <fig><label><caption><graphic xlink:href>, <table-wrap><label><caption><table>
+</article>
+
+DOCTYPE obligatorio: <!DOCTYPE article PUBLIC "-//NLM//DTD JATS (Z39.96) Journal Publishing DTD v1.4 20241031//EN" "JATS-journalpublishing1-4.dtd">
+
+${COMMON_RULES}
+
+Devuelve EXCLUSIVAMENTE el XML completo (desde <?xml version="1.0" encoding="UTF-8"?> hasta </article>). Sin explicaciones, sin Markdown.`,
+    htmlExtra: `METADATOS ESPECÍFICOS SCIELO en <head>:
+<meta name="citation_title" content="...">
+<meta name="citation_author" content="..."> (uno por autor)
+<meta name="citation_journal_title" content="...">
+<meta name="citation_issn" content="...">
+<meta name="citation_volume" content="...">
+<meta name="citation_issue" content="...">
+<meta name="citation_firstpage" content="...">
+<meta name="citation_lastpage" content="...">
+<meta name="citation_doi" content="...">
+<meta name="citation_publication_date" content="YYYY/MM/DD">
+<meta name="citation_language" content="es">
+<meta name="DC.title" content="...">
+<meta name="DC.creator" content="...">
+<meta name="DC.date" content="YYYY-MM-DD">`
+  },
+  doaj: {
+    name: 'DOAJ', icon: '📗', type: 'Dublin Core',
+    xmlFile: 'dublin-core-doaj.xml',
+    xmlPrompt: `ACTÚA COMO ESPECIALISTA EN OAI-PMH Y DUBLIN CORE PARA DOAJ.
+
+Genera un registro Dublin Core no cualificado (oai_dc) para el artículo.
+
+Elementos obligatorios (todos presentes):
+- <dc:title>: título exacto
+- <dc:creator>: uno por autor (nombre completo)
+- <dc:subject>: palabras clave separadas por punto y coma
+- <dc:description>: resumen/abstract
+- <dc:publisher>: entidad editora
+- <dc:date>: fecha de publicación (YYYY-MM-DD)
+- <dc:type>: info:eu-repo/semantics/article
+- <dc:format>: text/html, application/pdf
+- <dc:identifier>: DOI, URL, ISSN
+- <dc:source>: revista, volumen, número, páginas
+- <dc:language>: código ISO (es, en)
+- <dc:relation>: referencias
+- <dc:rights>: licencia Creative Commons
+
+${COMMON_RULES}
+
+Devuelve EXCLUSIVAMENTE el XML completo envuelto en <oai_dc:dc> con namespaces oai_dc y dc. Sin explicaciones.`,
+    htmlExtra: `METADATOS ESPECÍFICOS DOAJ en <head>:
+<meta name="DC.title" content="...">
+<meta name="DC.creator" content="..."> (uno por autor)
+<meta name="DC.subject" content="..."> (keywords)
+<meta name="DC.description" content="...">
+<meta name="DC.publisher" content="...">
+<meta name="DC.date" content="YYYY-MM-DD">
+<meta name="DC.type" content="info:eu-repo/semantics/article">
+<meta name="DC.format" content="text/html">
+<meta name="DC.identifier" content="..."> (DOI, URL, ISSN)
+<meta name="DC.language" content="es">
+<meta name="DC.rights" content="...">`
+  },
+  redalyc: {
+    name: 'Redalyc', icon: '📙', type: 'JATS4R',
+    xmlFile: 'articulo-redalyc.xml',
+    xmlPrompt: `ACTÚA COMO ESPECIALISTA EN XML JATS4R PARA REDALYC/AMELICA.
+
+Genera un XML JATS4R válido para el artículo.
+
+Estructura: <article article-type="..."><front><journal-meta><article-meta>...</article-meta></journal-meta></front><body><sec>...</sec></body><back><ref-list>...</ref-list></back></article>
+
+Metadatos obligatorios:
+- article-id (doi, publisher-id), title-group (article-title + trans-title), contrib-group con ORCID, aff completa, email, pub-date (received, accepted, published), abstract + trans-abstract, kwd-group, permissions con license, funding-group si aplica.
+
+${COMMON_RULES}
+
+Devuelve EXCLUSIVAMENTE el XML completo. Sin explicaciones.`,
+    htmlExtra: `METADATOS REDALYC en <head>: mismas etiquetas que SciELO (citation_* + DC.*).`
+  },
+  latindex: {
+    name: 'Latindex', icon: '📒', type: 'Dublin Core + Multiformato',
+    xmlFile: 'dublin-core-latindex.xml',
+    xmlPrompt: `ACTÚA COMO ESPECIALISTA EN OAI-PMH Y DUBLIN CORE PARA LATINDEX CATÁLOGO 2.0 (Característica 31).
+
+Genera un registro Dublin Core no cualificado (oai_dc) para el artículo.
+
+Elementos obligatorios:
+- <dc:title>, <dc:creator> (uno por autor), <dc:subject> (keywords), <dc:description> (resumen), <dc:publisher>, <dc:date> (YYYY-MM-DD), <dc:type>, <dc:format> (text/html + application/pdf), <dc:identifier> (DOI, URL, ISSN), <dc:source>, <dc:language>, <dc:relation>, <dc:rights>
+
+${COMMON_RULES}
+
+Devuelve EXCLUSIVAMENTE el XML completo con namespaces oai_dc y dc. Sin explicaciones.`,
+    htmlExtra: `METADATOS LATINDEX en <head>: DC.* estándar. Asegurar disponibilidad en HTML y PDF (más de un formato).`
+  },
+  dialnet: {
+    name: 'Dialnet', icon: '📕', type: 'Dublin Core no cualificado',
+    xmlFile: 'dublin-core-dialnet.xml',
+    xmlPrompt: `ACTÚA COMO ESPECIALISTA EN OAI-PMH Y DUBLIN CORE NO CUALIFICADO PARA DIALNET.
+
+Genera un registro Dublin Core sin calificar (oai_dc) con NORMALIZACIÓN ESTRICTA exigida por Dialnet:
+
+- <dc:title>: título normalizado, sin todo en mayúsculas.
+- <dc:creator>: uno por autor con formato "Apellido1 Apellido2, Nombre" (apellidos y nombre separados en campos distintos).
+- <dc:subject>: palabras clave separadas por punto y coma (;) y en minúsculas.
+- <dc:description>: resumen/abstract.
+- <dc:publisher>: entidad editora.
+- <dc:date>: fecha (YYYY-MM-DD).
+- <dc:type>: tipo de artículo.
+- <dc:format>: text/html, application/pdf.
+- <dc:identifier>: DOI, URL directa al texto completo, ISSN.
+- <dc:source>: revista, volumen, número, páginas.
+- <dc:language>: es, en.
+- <dc:relation>: referencias.
+- <dc:rights>: licencia.
+- Si hay títulos/resúmenes/keywords en otros idiomas, usa <dc:title xml:lang="en">, etc.
+
+${COMMON_RULES}
+
+Devuelve EXCLUSIVAMENTE el XML completo con namespaces oai_dc y dc. Sin explicaciones.`,
+    htmlExtra: `METADATOS DIALNET en <head>: DC.title, DC.creator (uno por autor con Apellidos, Nombre), DC.subject (separadas por ;), DC.description, DC.publisher, DC.date, DC.type, DC.format, DC.identifier, DC.source, DC.language, DC.relation, DC.rights.`
+  },
+  lilacs: {
+    name: 'LILACS', icon: '📓', type: 'LILACS / FI-Admin',
+    xmlFile: 'metadatos-lilacs.xml',
+    xmlPrompt: `ACTÚA COMO ESPECIALISTA EN EL FORMATO LILACS (BIREME/OPAS/OMS) Y NORMAS DE VANCOUVER PARA CIENCIAS DE LA SALUD.
+
+Genera un archivo XML con los metadatos del artículo estructurados según el formato LILACS (basado en UNISIST Reference Manual), listos para carga en FI-Admin.
+
+Campos obligatorios:
+- title (idioma original + traducción al inglés)
+- authors (nombre completo, afiliación, ORCID si existe)
+- affiliation (institución completa, ciudad, país)
+- source (título revista, ISSN, volumen, número, páginas, año)
+- publication_date (YYYY-MM-DD)
+- language (es, en, pt)
+- publication_type
+- abstract (español, inglés, portugués si aplica)
+- keywords (Descriptores en Ciencias de la Salud - DeCS)
+- references (formato Vancouver, con DOI/PMID/URL)
+- doi, url
+
+${COMMON_RULES}
+
+Devuelve EXCLUSIVAMENTE el XML completo. Sin explicaciones.`,
+    htmlExtra: `METADATOS LILACS en <head>: DC.* estándar + <meta name="citation_*">. Asegurar que las REFERENCIAS sigan el estilo VANCOUVER en el HTML.`
+  },
+  imbiomed: {
+    name: 'Imbiomed', icon: '📔', type: 'Vancouver + Metadatos',
+    xmlFile: 'metadatos-imbiomed.xml',
+    xmlPrompt: `ACTÚA COMO ESPECIALISTA EN PUBLICACIONES BIOMÉDICAS Y NORMAS DE VANCOUVER PARA IMBIOMED.
+
+Genera un archivo XML con los metadatos del artículo para Imbiomed.
+
+Campos:
+- title (español e inglés)
+- authors (nombre completo, afiliación)
+- affiliation (institución)
+- source (revista, ISSN, volumen, número, páginas, año)
+- publication_date
+- abstract (español e inglés)
+- keywords (español e inglés)
+- doi, url
+- references (formato Vancouver)
+
+${COMMON_RULES}
+
+Devuelve EXCLUSIVAMENTE el XML completo. Sin explicaciones.`,
+    htmlExtra: `METADATOS IMBIOMED en <head>: DC.* + <meta name="citation_*">. En el body, las REFERENCIAS deben seguir VANCOUVER: "Autor AA, Autor BB. Título. Revista. Año;Vol(Num):págs. doi:...".`.replace(/"/g,'\\"')
+  },
+  scholar: {
+    name: 'Google Scholar', icon: '📰', type: 'citation_* (Highwire)',
+    xmlFile: 'metadatos-scholar.xml',
+    xmlPrompt: `ACTÚA COMO ESPECIALISTA EN METADATOS HIGHWIRE PRESS (citation_*) PARA GOOGLE SCHOLAR.
+
+Genera un archivo XML con los metadatos que Google Scholar indexará, estructurados como una lista de etiquetas:
+
+<metadata>
+  <meta name="citation_title">...</meta>
+  <meta name="citation_author">...</meta> (uno por autor)
+  <meta name="citation_publication_date">YYYY/MM/DD</meta>
+  <meta name="citation_journal_title">...</meta>
+  <meta name="citation_issn">...</meta>
+  <meta name="citation_volume">...</meta>
+  <meta name="citation_issue">...</meta>
+  <meta name="citation_firstpage">...</meta>
+  <meta name="citation_lastpage">...</meta>
+  <meta name="citation_doi">...</meta>
+  <meta name="citation_pdf_url">...</meta>
+  <meta name="citation_abstract_html_url">...</meta>
+  <meta name="citation_fulltext_html_url">...</meta>
+  <meta name="citation_language">es</meta>
+</metadata>
+
+${COMMON_RULES}
+
+Devuelve EXCLUSIVAMENTE el XML completo. Sin explicaciones.`,
+    htmlExtra: `ETIQUETAS citation_* OBLIGATORIAS en <head> (Highwire Press):
+<meta name="citation_title" content="...">
+<meta name="citation_author" content="..."> (uno por autor)
+<meta name="citation_publication_date" content="YYYY/MM/DD">
+<meta name="citation_journal_title" content="...">
+<meta name="citation_issn" content="...">
+<meta name="citation_volume" content="...">
+<meta name="citation_issue" content="...">
+<meta name="citation_firstpage" content="...">
+<meta name="citation_lastpage" content="...">
+<meta name="citation_doi" content="...">
+<meta name="citation_pdf_url" content="...">
+<meta name="citation_language" content="es">`
+  },
+  generic: {
+    name: 'Genérico JATS', icon: '🧬', type: 'JATS 1.4',
+    xmlFile: 'articulo-generico.xml',
+    xmlPrompt: `ACTÚA COMO ESPECIALISTA EN JATS 1.4 JOURNAL PUBLISHING DTD.
+
+Genera un XML JATS completo y válido para el artículo.
+
+Estructura: <article article-type="research-article"><front><journal-meta><article-meta>...</article-meta></journal-meta></front><body><sec>...</sec></body><back><ref-list>...</ref-list></back><floats-group>...</floats-group></article>
+
+Metadatos: DOI, título, autores con ORCID, afiliaciones, fechas (received, accepted, published), volumen, número, páginas, abstract, keywords, license.
+
+DOCTYPE: <!DOCTYPE article PUBLIC "-//NLM//DTD JATS (Z39.96) Journal Publishing DTD v1.4 20241031//EN" "JATS-journalpublishing1-4.dtd">
+
+${COMMON_RULES}
+
+Devuelve EXCLUSIVAMENTE el XML completo. Sin explicaciones.`,
+    htmlExtra: `Incluye meta tags DC.* y citation_* estándar.`
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════
+   PROVEEDORES
+══════════════════════════════════════════════════════════════ */
+const PROVIDERS = {
+  anthropic: { name: 'Anthropic Claude', keyPlaceholder: 'sk-ant-...', models: [
+    {id:'claude-sonnet-4-20250514', name:'Claude Sonnet 4 (recomendado)', maxTokens:64000},
+    {id:'claude-opus-4-20250514', name:'Claude Opus 4', maxTokens:32000},
+    {id:'claude-3-5-sonnet-20241022', name:'Claude 3.5 Sonnet', maxTokens:8192}
+  ]},
+  openai: { name: 'OpenAI', keyPlaceholder: 'sk-...', models: [
+    {id:'gpt-4o', name:'GPT-4o', maxTokens:16000},
+    {id:'gpt-4-turbo', name:'GPT-4 Turbo', maxTokens:4096},
+    {id:'gpt-4o-mini', name:'GPT-4o mini', maxTokens:16000}
+  ]},
+  gemini: { name: 'Google Gemini', keyPlaceholder: 'AIza...', models: [
+    {id:'gemini-2.5-pro', name:'Gemini 2.5 Pro', maxTokens:32000},
+    {id:'gemini-2.5-flash', name:'Gemini 2.5 Flash', maxTokens:32000}
+  ]},
+  deepseek: { name: 'DeepSeek', keyPlaceholder: 'sk-...', models: [
+    {id:'deepseek-chat', name:'DeepSeek Chat (V3)', maxTokens:8192},
+    {id:'deepseek-reasoner', name:'DeepSeek Reasoner (R1)', maxTokens:8192}
+  ]}
+};
+
+/* ══════════════════════════════════════════════════════════════
+   ESTADO
+══════════════════════════════════════════════════════════════ */
+const state = {
+  targetId: 'scielo',
+  formats: new Set(['xml', 'html', 'pdf', 'epub']),
+  settings: { provider: 'deepseek', model: 'deepseek-chat', apiKey: '', maxTokens: 8192, temperature: 0.15 },
+  customPrompts: {},
+  outputs: { xml: '', html: '', pdfBlob: null, epubBlob: null, raw: '' },
+  statuses: { xml: 'idle', html: 'idle', pdf: 'idle', epub: 'idle', raw: 'idle' },
+  running: false
+};
+
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+const escapeHTML = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+/* ══════════════════════════════════════════════════════════════
+   PERSISTENCIA
+══════════════════════════════════════════════════════════════ */
+function saveState() {
+  try {
+    localStorage.setItem('editorial-suite', JSON.stringify({
+      targetId: state.targetId,
+      formats: [...state.formats],
+      settings: state.settings,
+      customPrompts: state.customPrompts
+    }));
+  } catch(e) {}
+}
+function loadState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('editorial-suite') || '{}');
+    if (saved.targetId) state.targetId = saved.targetId;
+    if (saved.formats) state.formats = new Set(saved.formats);
+    if (saved.settings) state.settings = { ...state.settings, ...saved.settings };
+    if (saved.customPrompts) state.customPrompts = saved.customPrompts;
+  } catch(e) {}
+}
+
+/* ══════════════════════════════════════════════════════════════
+   UI: TARGETS Y FORMATOS
+══════════════════════════════════════════════════════════════ */
+function renderTargets() {
+  const grid = $('#targets-grid');
+  grid.innerHTML = Object.entries(TARGETS).map(([id, t]) => `
+    <div class="target ${id === state.targetId ? 'active' : ''}" data-target="${id}">
+      <span class="icon">${t.icon}</span>
+      <div class="name">${t.name}</div>
+      <div class="db-type">${t.type}</div>
+    </div>
+  `).join('');
+  grid.querySelectorAll('.target').forEach(el => {
+    el.onclick = () => {
+      state.targetId = el.dataset.target;
+      renderTargets();
+      saveState();
+      updateCounters();
+    };
+  });
+}
+
+function renderFormats() {
+  $$('.format').forEach(el => {
+    const fmt = el.dataset.format;
+    el.classList.toggle('checked', state.formats.has(fmt));
+    el.onclick = () => {
+      if (state.formats.has(fmt)) {
+        if (state.formats.size === 1) return;
+        state.formats.delete(fmt);
+      } else {
+        state.formats.add(fmt);
+      }
+      if ((state.formats.has('pdf') || state.formats.has('epub')) && !state.formats.has('html')) {
+        state.formats.add('html');
+      }
+      renderFormats();
+      saveState();
+    };
+  });
+}
+
+function updateCounters() {
+  const a = $('#article-input').value.length;
+  const t = $('#template-input').value.length;
+  const s = $('#schema-input').value.length;
+  $('#in-chars').textContent = (a + t + s).toLocaleString() + ' chars';
+  const total = (state.outputs.xml?.length || 0) + (state.outputs.html?.length || 0);
+  $('#out-chars').textContent = total.toLocaleString() + ' chars';
+}
+
+function setStatus(text, type='idle') {
+  $('#status-text').textContent = text;
+  $('#status').className = 'status ' + (type === 'idle' ? '' : type);
+}
+
+function setProgress(pct) {
+  $('#progress-fill').style.width = pct + '%';
+}
+
+function setDot(fmt, status) {
+  const dot = $(`#dot-${fmt}`);
+  if (!dot) return;
+  dot.className = 'dot ' + status;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CONSTRUCCIÓN DE PROMPTS
+══════════════════════════════════════════════════════════════ */
+function getXMLPrompt() {
+  const target = TARGETS[state.targetId];
+  const custom = state.customPrompts[`${state.targetId}:xml`];
+  return custom || target.xmlPrompt;
+}
+
+function getHTMLPrompt() {
+  const target = TARGETS[state.targetId];
+  const custom = state.customPrompts[`${state.targetId}:html`];
+  if (custom) return custom;
+  return `${COMMON_HTML_BASE}\n\n${target.htmlExtra}`;
+}
+
+function buildFullPrompt(basePrompt, article, template, schema) {
+  return `${basePrompt}
+
+═══════════════════════════════════════════
+PLANTILLA_HTML (referencia visual/CSS)
+═══════════════════════════════════════════
+${template || '(No proporcionada. Usa una plantilla editorial limpia con tipografía serif para el cuerpo y sans-serif para títulos, colores sobrios, márgenes generosos y estructura de revista científica.)'}
+
+═══════════════════════════════════════════
+ARTICULO_FUENTE
+═══════════════════════════════════════════
+${article}
+
+═══════════════════════════════════════════
+NOTAS / ESQUEMA ADICIONAL
+═══════════════════════════════════════════
+${schema || '(No especificado)'}
+
+═══════════════════════════════════════════
+RECUERDA: Devuelve EXCLUSIVAMENTE el archivo solicitado, sin explicaciones ni Markdown.
+═══════════════════════════════════════════`;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   API CALLS
+══════════════════════════════════════════════════════════════ */
+async function callAI(prompt) {
+  const { provider, model, apiKey, maxTokens, temperature } = state.settings;
+  if (!apiKey) throw new Error('Falta la API Key en Configuración.');
+  
+  const actualMaxTokens = Math.min(maxTokens, PROVIDERS[provider].models.find(m => m.id === model)?.maxTokens || 4096);
+
+  if (provider === 'anthropic') {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true', 'content-type': 'application/json' },
+      body: JSON.stringify({ model, max_tokens: actualMaxTokens, temperature, messages: [{ role: 'user', content: prompt }] })
+    });
+    if (!r.ok) throw new Error(`Anthropic ${r.status}: ${(await r.text()).slice(0, 300)}`);
+    const d = await r.json();
+    return d.content.map(b => b.text || '').join('');
+  }
+  if (provider === 'openai') {
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, max_tokens: actualMaxTokens, temperature, messages: [{ role: 'user', content: prompt }] })
+    });
+    if (!r.ok) throw new Error(`OpenAI ${r.status}: ${(await r.text()).slice(0, 300)}`);
+    const d = await r.json();
+    return d.choices[0].message.content;
+  }
+  if (provider === 'gemini') {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: actualMaxTokens, temperature } }) });
+    if (!r.ok) throw new Error(`Gemini ${r.status}: ${(await r.text()).slice(0, 300)}`);
+    const d = await r.json();
+    return (d.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+  }
+  if (provider === 'deepseek') {
+    const r = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, max_tokens: actualMaxTokens, temperature, messages: [{ role: 'user', content: prompt }] })
+    });
+    if (!r.ok) throw new Error(`DeepSeek ${r.status}: ${(await r.text()).slice(0, 300)}`);
+    const d = await r.json();
+    return d.choices[0].message.content;
+  }
+  throw new Error('Proveedor no soportado');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   LIMPIEZA / EXTRACCIÓN
+══════════════════════════════════════════════════════════════ */
+function extractXML(text) {
+  let clean = (text || '').trim();
+  clean = clean.replace(/^```\w*\s*\n?/i, '').replace(/\n?\s*```$/i, '');
+  let start = clean.search(/<\?xml/i);
+  if (start < 0) start = clean.search(/<(!DOCTYPE|[a-zA-Z]+[:\s])/i);
+  if (start > 0) clean = clean.substring(start);
+  return clean.trim();
+}
+function extractHTML(text) {
+  let clean = (text || '').trim();
+  clean = clean.replace(/^```\w*\s*\n?/i, '').replace(/\n?\s*```$/i, '');
+  const idx = clean.search(/<!DOCTYPE\s+html/i);
+  if (idx > 0) clean = clean.substring(idx);
+  else if (idx < 0) {
+    const hIdx = clean.search(/<html[\s>]/i);
+    if (hIdx > 0) clean = clean.substring(hIdx);
+  }
+  return clean.trim();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   RENDERIZADO
+══════════════════════════════════════════════════════════════ */
+function highlightXML(xml) {
+  let h = escapeHTML(xml);
+  h = h.replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span class="cmt">$1</span>');
+  h = h.replace(/(&lt;!\[CDATA\[[\s\S]*?\]\]&gt;)/g, '<span class="cmt">$1</span>');
+  h = h.replace(/(&lt;\?[\s\S]*?\?&gt;)/g, '<span class="pi">$1</span>');
+  h = h.replace(/(&lt;!DOCTYPE[\s\S]*?&gt;)/g, '<span class="dt">$1</span>');
+  h = h.replace(/(&lt;\/?)([\w:-]+)/g, '$1<span class="tag">$2</span>');
+  h = h.replace(/([\w:-]+)=(&quot;.*?&quot;)/g, '<span class="attr">$1</span>=<span class="str">$2</span>');
+  return h;
+}
+
+function renderXML(xml) {
+  const empty = $('#xml-empty'), view = $('#xml-view');
+  if (!xml) {
+    empty.style.display = 'grid'; view.style.display = 'none';
+    setDot('xml', 'err'); return;
+  }
+  empty.style.display = 'none'; view.style.display = 'block';
+  view.innerHTML = highlightXML(xml);
+  try {
+    const doc = new DOMParser().parseFromString(xml, 'application/xml');
+    const errs = doc.querySelectorAll('parsererror');
+    setDot('xml', errs.length ? 'warn' : 'ok');
+  } catch { setDot('xml', 'warn'); }
+}
+
+function renderHTML(html) {
+  const empty = $('#html-empty'), frame = $('#html-preview');
+  if (!html) {
+    empty.style.display = 'grid'; frame.style.display = 'none';
+    setDot('html', 'err'); return;
+  }
+  empty.style.display = 'none'; frame.style.display = 'block';
+  frame.srcdoc = html;
+  setDot('html', 'ok');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   GENERACIÓN DE PDF
+══════════════════════════════════════════════════════════════ */
+async function generatePDFFromHTML(html) {
+  if (!html) throw new Error('Se requiere HTML para generar el PDF');
+  const target = TARGETS[state.targetId];
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;height:1000px;border:none';
+  document.body.appendChild(iframe);
+  iframe.srcdoc = html;
+
+  await new Promise(res => {
+    iframe.onload = () => setTimeout(res, 400);
+  });
+
+  try {
+    const html2pdf = window.html2pdf;
+    const blob = await html2pdf().set({
+      margin: [15, 15, 15, 15],
+      filename: target.xmlFile.replace('.xml', '.pdf'),
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    }).from(iframe.contentDocument.body).outputPdf('blob');
+    return blob;
+  } finally {
+    document.body.removeChild(iframe);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   GENERACIÓN DE EPUB 3
+══════════════════════════════════════════════════════════════ */
+async function generateEPUBFromHTML(html) {
+  if (!html) throw new Error('Se requiere HTML para generar el EPUB');
+  const target = TARGETS[state.targetId];
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const title = doc.querySelector('h1')?.textContent?.trim() || 'Artículo científico';
+  const authors = [...doc.querySelectorAll('meta[name="citation_author"], meta[name="DC.creator"]')].map(m => m.content).join('; ') || 'Autor';
+  const journal = doc.querySelector('meta[name="citation_journal_title"], meta[name="DC.publisher"]')?.content || 'Revista';
+  const lang = doc.documentElement.lang || 'es';
+  const cssContent = [...doc.querySelectorAll('style')].map(s => s.textContent).join('\n');
+  const body = doc.body;
+  const bodyContent = body ? body.innerHTML : `<h1>${escapeHTML(title)}</h1>`;
+
+  const xhtml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="${lang}" xml:lang="${lang}">
+<head>
+<meta charset="UTF-8"/>
+<title>${escapeHTML(title)}</title>
+<link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body>
+${bodyContent}
+</body>
+</html>`;
+
+  const opf = `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="${lang}">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="bookid">urn:uuid:${crypto.randomUUID()}</dc:identifier>
+    <dc:title>${escapeHTML(title)}</dc:title>
+    <dc:creator>${escapeHTML(authors)}</dc:creator>
+    <dc:publisher>${escapeHTML(journal)}</dc:publisher>
+    <dc:language>${lang}</dc:language>
+    <dc:date>${new Date().toISOString().slice(0, 10)}</dc:date>
+    <dc:format>application/epub+zip</dc:format>
+    <dc:type>Text</dc:type>
+    <meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d+Z$/, 'Z')}</meta>
+    <meta property="schema:accessMode">textual</meta>
+    <meta property="schema:accessMode">visual</meta>
+    <meta property="schema:accessibilityFeature">alternativeText</meta>
+    <meta property="schema:accessibilityFeature">tableOfContents</meta>
+    <meta property="schema:accessibilityHazard">none</meta>
+    <meta property="schema:accessibilitySummary">Publicación accesible con estructura semántica y texto alternativo.</meta>
+  </metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="article" href="articulo.xhtml" media-type="application/xhtml+xml"/>
+    <item id="css" href="style.css" media-type="text/css"/>
+  </manifest>
+  <spine>
+    <itemref idref="article"/>
+  </spine>
+</package>`;
+
+  const nav = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="${lang}" xml:lang="${lang}">
+<head>
+<meta charset="UTF-8"/>
+<title>Índice</title>
+<link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body>
+<nav epub:type="toc" id="toc">
+<h1>Índice</h1>
+<ol>
+<li><a href="articulo.xhtml">${escapeHTML(title)}</a></li>
+</ol>
+</nav>
+</body>
+</html>`;
+
+  const container = `<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`;
+
+  const zip = new JSZip();
+  zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
+  zip.file('META-INF/container.xml', container);
+  zip.file('OEBPS/content.opf', opf);
+  zip.file('OEBPS/nav.xhtml', nav);
+  zip.file('OEBPS/articulo.xhtml', xhtml);
+  zip.file('OEBPS/style.css', cssContent || 'body{font-family:Georgia,serif;line-height:1.6;}');
+  return await zip.generateAsync({ type: 'blob', mimeType: 'application/epub+zip' });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CONVERSIÓN PRINCIPAL
+══════════════════════════════════════════════════════════════ */
+async function convert() {
+  if (state.running) return;
+  const article = $('#article-input').value.trim();
+  const template = $('#template-input').value.trim();
+  const schema = $('#schema-input').value.trim();
+
+  if (!article) { alert('Falta el artículo fuente en la entrada.'); setStatus('Falta el artículo fuente', 'err'); return; }
+  if (!state.settings.apiKey) { alert('Configura tu API key primero en el botón de Configuración.'); setStatus('Falta API key', 'err'); openSettings(); return; }
+
+  const target = TARGETS[state.targetId];
+  const needHTML = state.formats.has('html') || state.formats.has('pdf') || state.formats.has('epub');
+
+  state.running = true;
+  $('#btn-convert').disabled = true;
+  state.outputs = { xml: '', html: '', pdfBlob: null, epubBlob: null, raw: '' };
+  state.statuses = { xml: 'idle', html: 'idle', pdf: 'idle', epub: 'idle', raw: 'idle' };
+  Object.keys(state.statuses).forEach(k => setDot(k, ''));
+  $('#raw-view').textContent = '';
+
+  const steps = [];
+  if (state.formats.has('xml')) steps.push('xml');
+  if (needHTML) steps.push('html');
+  if (state.formats.has('pdf')) steps.push('pdf');
+  if (state.formats.has('epub')) steps.push('epub');
+
+  try {
+    let stepIdx = 0;
+
+    // ─── XML ───
+    if (state.formats.has('xml')) {
+      stepIdx++;
+      setStatus(`[${stepIdx}/${steps.length}] Generando XML (${target.type})...`, 'running');
+      setDot('xml', 'warn');
+      setProgress((stepIdx - 1) / steps.length * 100);
+      try {
+        const fullPrompt = buildFullPrompt(getXMLPrompt(), article, template, schema);
+        const raw = await callAI(fullPrompt);
+        state.outputs.raw = raw;
+        $('#raw-view').textContent = raw;
+        state.outputs.xml = extractXML(raw);
+        renderXML(state.outputs.xml);
+        if (state.outputs.xml) setDot('xml', 'ok');
+      } catch (e) {
+        setDot('xml', 'err');
+        setStatus('Error API XML: ' + e.message, 'err');
+        alert('Error al generar XML:\n' + e.message + '\n\nRevisa la pestaña "Raw" o tu configuración de API.');
+        return; // Detener si falla la IA
+      }
+    }
+
+    // ─── HTML ───
+    if (needHTML) {
+      stepIdx++;
+      setStatus(`[${stepIdx}/${steps.length}] Generando HTML5...`, 'running');
+      setDot('html', 'warn');
+      setProgress((stepIdx - 1) / steps.length * 100);
+      try {
+        const fullPrompt = buildFullPrompt(getHTMLPrompt(), article, template, schema);
+        const raw = await callAI(fullPrompt);
+        state.outputs.html = extractHTML(raw);
+        renderHTML(state.outputs.html);
+        if (state.outputs.html) setDot('html', 'ok');
+      } catch (e) {
+        setDot('html', 'err');
+        setStatus('Error API HTML: ' + e.message, 'err');
+        alert('Error al generar HTML:\n' + e.message);
+      }
+    }
+
+    // ─── PDF ───
+    if (state.formats.has('pdf') && state.outputs.html) {
+      stepIdx++;
+      setStatus(`[${stepIdx}/${steps.length}] Generando PDF...`, 'running');
+      setDot('pdf', 'warn');
+      setProgress((stepIdx - 1) / steps.length * 100);
+      try {
+        state.outputs.pdfBlob = await generatePDFFromHTML(state.outputs.html);
+        setDot('pdf', 'ok');
+        $('#pdf-empty').style.display = 'none';
+        $('#pdf-container').style.display = 'block';
+        $('#pdf-container').innerHTML = `
+          <div style="background:#fff;padding:20px;border-radius:8px;color:#000;max-width:700px;margin:0 auto">
+            <h3 style="color:#0ea5a4;margin-bottom:10px">✅ PDF generado</h3>
+            <p>Tamaño: ${(state.outputs.pdfBlob.size / 1024).toFixed(1)} KB</p>
+            <p style="margin-top:10px;font-size:13px;color:#555">Se incluirá en el paquete ZIP.</p>
+            <button onclick="downloadPDF()" style="margin-top:14px;padding:8px 16px;border-radius:6px;border:1px solid #0ea5a4;background:#0ea5a4;color:#fff;cursor:pointer;font-family:inherit">💾 Descargar PDF</button>
+          </div>`;
+      } catch (e) {
+        setDot('pdf', 'err');
+        console.error('PDF error:', e);
+      }
+    }
+
+    // ─── EPUB ───
+    if (state.formats.has('epub') && state.outputs.html) {
+      stepIdx++;
+      setStatus(`[${stepIdx}/${steps.length}] Generando EPUB 3...`, 'running');
+      setDot('epub', 'warn');
+      setProgress((stepIdx - 1) / steps.length * 100);
+      try {
+        state.outputs.epubBlob = await generateEPUBFromHTML(state.outputs.html);
+        setDot('epub', 'ok');
+        $('#epub-empty').style.display = 'none';
+        $('#epub-view').style.display = 'block';
+        $('#epub-view').innerHTML = `<span class="tag">&lt;epub&gt;</span> EPUB 3 generado correctamente
+  · Tamaño: <span class="str">${(state.outputs.epubBlob.size / 1024).toFixed(1)} KB</span>
+  · Estructura: mimetype, META-INF/container.xml, OEBPS/content.opf, OEBPS/nav.xhtml, OEBPS/articulo.xhtml, OEBPS/style.css
+  · Metadatos: Dublin Core + EPUB Accessibility 1.0
+  · Validar con: <span class="attr">epubcheck</span>
+
+<span class="tag">&lt;button</span> <span class="attr">onclick</span>=<span class="str">"downloadEPUB()"</span><span class="tag">&gt;</span>💾 Descargar EPUB<span class="tag">&lt;/button&gt;</span>`;
+        $('#epub-view').innerHTML += `<div style="margin-top:16px"><button onclick="downloadEPUB()" style="padding:8px 16px;border-radius:6px;border:1px solid #0ea5a4;background:#0ea5a4;color:#fff;cursor:pointer;font-family:inherit">💾 Descargar EPUB</button></div>`;
+      } catch (e) {
+        setDot('epub', 'err');
+        console.error('EPUB error:', e);
+      }
+    }
+
+    setProgress(100);
+    const firstOk = ['xml','html','pdf','epub'].find(f => state.formats.has(f) && state.outputs[f === 'xml' ? 'xml' : f === 'html' ? 'html' : f === 'pdf' ? 'pdfBlob' : 'epubBlob']);
+    if (firstOk) switchTab(firstOk === 'pdf' ? 'pdf' : firstOk === 'epub' ? 'epub' : firstOk);
+
+    const hasAny = state.outputs.xml || state.outputs.html || state.outputs.pdfBlob || state.outputs.epubBlob;
+    $('#btn-download-zip').disabled = !hasAny;
+    renderPackageInfo();
+    setStatus(`✓ Completado (${target.name})`, 'ok');
+    setTimeout(() => setStatus('Listo'), 2500);
+  } catch (e) {
+    console.error(e);
+    setStatus('Error general: ' + e.message, 'err');
+    alert('Error general:\n' + e.message);
+  } finally {
+    state.running = false;
+    $('#btn-convert').disabled = false;
+    setTimeout(() => setProgress(0), 1500);
+  }
+}
+
+function switchTab(name) {
+  $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  $$('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DESCARGA INDIVIDUAL
+══════════════════════════════════════════════════════════════ */
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+window.downloadPDF = () => {
+  if (state.outputs.pdfBlob) {
+    const target = TARGETS[state.targetId];
+    downloadBlob(state.outputs.pdfBlob, target.xmlFile.replace('.xml', '.pdf'));
+    setStatus('PDF descargado', 'ok');
+  }
+};
+window.downloadEPUB = () => {
+  if (state.outputs.epubBlob) {
+    const target = TARGETS[state.targetId];
+    downloadBlob(state.outputs.epubBlob, target.xmlFile.replace('.xml', '.epub'));
+    setStatus('EPUB descargado', 'ok');
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════
+   PAQUETE ZIP
+══════════════════════════════════════════════════════════════ */
+function renderPackageInfo() {
+  const target = TARGETS[state.targetId];
+  const items = [];
+  if (state.outputs.xml) items.push({ f: target.xmlFile, t: 'XML / Metadatos (' + target.type + ')' });
+  if (state.outputs.html) items.push({ f: target.xmlFile.replace('.xml', '.html'), t: 'HTML5 semántico' });
+  if (state.outputs.pdfBlob) items.push({ f: target.xmlFile.replace('.xml', '.pdf'), t: 'PDF (A4)' });
+  if (state.outputs.epubBlob) items.push({ f: target.xmlFile.replace('.xml', '.epub'), t: 'EPUB 3 accesible' });
+  if (!items.length) {
+    $('#package-empty').style.display = 'grid';
+    $('#package-info').style.display = 'none';
+    return;
+  }
+  $('#package-empty').style.display = 'none';
+  $('#package-info').style.display = 'block';
+  $('#package-info').innerHTML = `
+    <div style="background:var(--panel2);padding:16px;border-radius:8px;border:1px solid var(--border)">
+      <h3 style="margin-bottom:12px">📦 Paquete editorial generado</h3>
+      <p style="color:var(--muted);font-size:12px;margin-bottom:12px">Destino: <b style="color:var(--text)">${target.name}</b> · ${items.length} archivo(s)</p>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;font-family:var(--mono)">
+        <thead><tr style="background:var(--panel);color:var(--muted);text-align:left"><th style="padding:8px;border-bottom:1px solid var(--border)">Archivo</th><th style="padding:8px;border-bottom:1px solid var(--border)">Tipo</th></tr></thead>
+        <tbody>
+        ${items.map(i => `<tr><td style="padding:8px;border-bottom:1px solid var(--border);color:#7ee787">${i.f}</td><td style="padding:8px;border-bottom:1px solid var(--border);color:var(--muted)">${i.t}</td></tr>`).join('')}
+        </tbody>
+      </table>
+      <div style="margin-top:16px"><button class="btn primary" id="btn-download-zip-inline">💾 Descargar paquete completo (ZIP)</button></div>
+    </div>`;
+  $('#btn-download-zip-inline').onclick = downloadZIP;
+}
+
+async function downloadZIP() {
+  const target = TARGETS[state.targetId];
+  setStatus('Generando ZIP...', 'running');
+  try {
+    const zip = new JSZip();
+    const folder = zip.folder(`${target.name.toLowerCase().replace(/\s+/g, '-')}-editorial`);
+
+    if (state.outputs.xml) folder.file(target.xmlFile, state.outputs.xml);
+    if (state.outputs.html) folder.file(target.xmlFile.replace('.xml', '.html'), state.outputs.html);
+    if (state.outputs.pdfBlob) folder.file(target.xmlFile.replace('.xml', '.pdf'), state.outputs.pdfBlob);
+    if (state.outputs.epubBlob) folder.file(target.xmlFile.replace('.xml', '.epub'), state.outputs.epubBlob);
+
+    const readme = `PAQUETE EDITORIAL — ${target.name}
+Generado: ${new Date().toISOString()}
+Base de datos destino: ${target.name}
+Tipo de marcado: ${target.type}
+
+CONTENIDO:
+${state.outputs.xml ? `- ${target.xmlFile}  → XML / Metadatos (${target.type})` : ''}
+${state.outputs.html ? `- ${target.xmlFile.replace('.xml', '.html')}  → HTML5 semántico y accesible` : ''}
+${state.outputs.pdfBlob ? `- ${target.xmlFile.replace('.xml', '.pdf')}  → PDF A4 listo para publicar` : ''}
+${state.outputs.epubBlob ? `- ${target.xmlFile.replace('.xml', '.epub')}  → EPUB 3 accesible (validar con epubcheck)` : ''}
+
+VALIDACIONES RECOMENDADAS:
+- XML: validar contra el esquema ${target.type}
+- HTML: https://validator.w3.org/
+- EPUB: https://github.com/w3c/epubcheck
+- PDF: texto seleccionable + metadatos completos
+`;
+    folder.file('README.txt', readme);
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    downloadBlob(blob, `paquete-${target.name.toLowerCase().replace(/\s+/g, '-')}.zip`);
+    setStatus('✓ ZIP descargado', 'ok');
+    setTimeout(() => setStatus('Listo'), 2000);
+  } catch (e) {
+    setStatus('Error ZIP: ' + e.message, 'err');
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ARCHIVOS
+══════════════════════════════════════════════════════════════ */
+async function readFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'docx') {
+    const buf = await file.arrayBuffer();
+    const res = await mammoth.extractRawText({ arrayBuffer: buf });
+    return res.value;
+  }
+  return await file.text();
+}
+async function loadFileInto(target) {
+  return new Promise(resolve => {
+    const input = $('#file-input');
+    input.onchange = async () => {
+      const file = input.files[0];
+      if (!file) return resolve();
+      try {
+        const text = await readFile(file);
+        const el = $(`#${target}-input`);
+        if (el) el.value = text;
+        updateCounters();
+        setStatus(`Cargado: ${file.name}`, 'ok');
+        setTimeout(() => setStatus('Listo'), 1500);
+      } catch (e) {
+        alert('Error leyendo el archivo: ' + e.message);
+        setStatus('Error: ' + e.message, 'err');
+      }
+      input.value = '';
+      resolve();
+    };
+    input.click();
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CONFIGURACIÓN
+══════════════════════════════════════════════════════════════ */
+function populateModels() {
+  const p = state.settings.provider;
+  const list = PROVIDERS[p].models;
+  const sel = $('#cfg-model');
+  sel.innerHTML = list.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+  const cur = list.find(m => m.id === state.settings.model) || list[0];
+  sel.value = cur.id;
+  state.settings.model = cur.id;
+  state.settings.maxTokens = Math.min(state.settings.maxTokens, cur.maxTokens);
+  $('#cfg-maxtokens').value = state.settings.maxTokens;
+  $('#cfg-maxtokens').max = cur.maxTokens;
+  $('#cfg-model-hint').textContent = `Máx. tokens permitidos: ${cur.maxTokens.toLocaleString()}`;
+  $('#cfg-apikey').placeholder = PROVIDERS[p].keyPlaceholder;
+}
+function openSettings() {
+  $('#cfg-provider').value = state.settings.provider;
+  $('#cfg-apikey').value = state.settings.apiKey;
+  $('#cfg-maxtokens').value = state.settings.maxTokens;
+  $('#cfg-temp').value = state.settings.temperature;
+  populateModels();
+  $('#settings-modal').classList.add('open');
+}
+function saveSettings() {
+  state.settings.provider = $('#cfg-provider').value;
+  state.settings.model = $('#cfg-model').value;
+  state.settings.apiKey = $('#cfg-apikey').value.trim();
+  state.settings.maxTokens = parseInt($('#cfg-maxtokens').value, 10);
+  state.settings.temperature = parseFloat($('#cfg-temp').value);
+  saveState();
+  $('#settings-modal').classList.remove('open');
+  setStatus('Configuración guardada', 'ok');
+  setTimeout(() => setStatus('Listo'), 1500);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PROMPT EDITOR
+══════════════════════════════════════════════════════════════ */
+function openPromptEditor() {
+  const sel = $('#prompt-target');
+  sel.innerHTML = Object.entries(TARGETS).map(([id, t]) =>
+    `<option value="${id}">${t.icon} ${t.name}</option>`
+  ).join('');
+  sel.value = state.targetId;
+  loadPromptIntoEditor();
+  $('#prompt-modal').classList.add('open');
+}
+function loadPromptIntoEditor() {
+  const tid = $('#prompt-target').value;
+  const type = $('#prompt-type').value;
+  const custom = state.customPrompts[`${tid}:${type}`];
+  const defaults = type === 'xml' ? TARGETS[tid].xmlPrompt : `${COMMON_HTML_BASE}\n\n${TARGETS[tid].htmlExtra}`;
+  $('#prompt-text').value = custom || defaults;
+}
+function saveCustomPrompt() {
+  const tid = $('#prompt-target').value;
+  const type = $('#prompt-type').value;
+  state.customPrompts[`${tid}:${type}`] = $('#prompt-text').value;
+  saveState();
+  setStatus('Prompt guardado', 'ok');
+  setTimeout(() => setStatus('Listo'), 1500);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   BINDINGS
+══════════════════════════════════════════════════════════════ */
+function bind() {
+  $('#btn-settings').onclick = openSettings;
+  $('#btn-save-settings').onclick = saveSettings;
+  $('#cfg-provider').onchange = () => { state.settings.provider = $('#cfg-provider').value; populateModels(); };
+
+  $('#btn-prompt').onclick = openPromptEditor;
+  $('#prompt-target').onchange = loadPromptIntoEditor;
+  $('#prompt-type').onchange = loadPromptIntoEditor;
+  $('#btn-save-prompt').onclick = saveCustomPrompt;
+  $('#btn-reset-prompt').onclick = () => {
+    const tid = $('#prompt-target').value;
+    const type = $('#prompt-type').value;
+    delete state.customPrompts[`${tid}:${type}`];
+    saveState();
+    loadPromptIntoEditor();
+  };
+
+  $$('[data-close]').forEach(btn => btn.onclick = () => $('#' + btn.dataset.close).classList.remove('open'));
+  $$('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); }));
+
+  $$('.tab').forEach(t => t.onclick = () => switchTab(t.dataset.tab));
+
+  $$('[data-load]').forEach(b => b.onclick = () => loadFileInto(b.dataset.load));
+  $$('[data-clear]').forEach(b => b.onclick = () => {
+    const el = $(`#${b.dataset.clear}-input`);
+    if (el) el.value = '';
+    updateCounters();
+  });
+
+  ['article','template','schema'].forEach(k => {
+    const el = $(`#${k}-input`);
+    if (el) el.addEventListener('input', updateCounters);
+  });
+
+  $('#btn-convert').onclick = convert;
+  $('#btn-download-zip').onclick = downloadZIP;
+  $('#btn-clear-all').onclick = () => {
+    if (!confirm('¿Limpiar todo?')) return;
+    ['article','template','schema'].forEach(k => $(`#${k}-input`).value = '');
+    state.outputs = { xml: '', html: '', pdfBlob: null, epubBlob: null, raw: '' };
+    renderXML(''); renderHTML('');
+    $('#pdf-container').style.display = 'none';
+    $('#pdf-empty').style.display = 'grid';
+    $('#epub-view').style.display = 'none';
+    $('#epub-empty').style.display = 'grid';
+    $('#package-info').style.display = 'none';
+    $('#package-empty').style.display = 'grid';
+    $('#raw-view').textContent = '';
+    $('#btn-download-zip').disabled = true;
+    Object.keys(state.statuses).forEach(k => setDot(k, ''));
+    updateCounters();
+    setStatus('Listo');
+  };
+}
+
+/* ══════════════════════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════════════════════ */
+(function init() {
+  loadState();
+  renderTargets();
+  renderFormats();
+  $('#cfg-provider').value = state.settings.provider;
+  populateModels();
+  bind();
+  updateCounters();
+  setStatus('Listo');
+})();
+</script>
+</body>
+</html>
