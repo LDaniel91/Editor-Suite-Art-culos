@@ -345,10 +345,13 @@
       <div class="field">
         <label>Proveedor de IA</label>
         <select id="cfg-provider">
-          <option value="anthropic">Anthropic Claude (recomendado)</option>
-          <option value="openai">OpenAI GPT</option>
+          <option value="manual">Manual sin API (DeepSeek web, recomendado sin USD)</option>
+          <option value="openrouter">OpenRouter Free (modelos :free)</option>
+          <option value="groq">Groq Free</option>
+          <option value="deepseek">DeepSeek API (requiere saldo)</option>
           <option value="gemini">Google Gemini</option>
-          <option value="deepseek">DeepSeek</option>
+          <option value="openai">OpenAI GPT</option>
+          <option value="anthropic">Anthropic Claude</option>
         </select>
       </div>
       <div class="field">
@@ -400,6 +403,33 @@
     <div class="modal-foot">
       <button class="btn" id="btn-reset-prompt">↺ Restaurar</button>
       <button class="btn primary" id="btn-save-prompt">Guardar</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════ MANUAL MODAL ══════════ -->
+<div class="modal" id="manual-modal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2>✍ Modo manual sin API</h2>
+      <button class="close-btn" id="btn-manual-close" type="button">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin:0 0 10px;color:var(--muted);font-size:13px;line-height:1.5">Copia este prompt, pégalo en DeepSeek web u otra IA gratuita, espera la respuesta completa y pégala abajo. El programa continuará con esa respuesta.</p>
+      <div class="field">
+        <label>Prompt para copiar</label>
+        <textarea id="manual-prompt" readonly style="min-height:180px"></textarea>
+      </div>
+      <div class="field">
+        <label>Respuesta de la IA</label>
+        <textarea id="manual-response" placeholder="Pega aquí la respuesta completa de DeepSeek web..." style="min-height:180px"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btn-manual-copy" type="button">Copiar prompt</button>
+      <button class="btn" id="btn-manual-cancel" type="button">Cancelar</button>
+      <button class="btn primary" id="btn-manual-use" type="button">Usar respuesta</button>
     </div>
   </div>
 </div>
@@ -696,6 +726,17 @@ Devuelve EXCLUSIVAMENTE el XML completo. Sin explicaciones.`,
    PROVEEDORES
 ══════════════════════════════════════════════════════════════ */
 const PROVIDERS = {
+  manual: { name: 'Manual sin API', keyPlaceholder: 'No necesita API Key', models: [
+    {id:'manual-deepseek-web', name:'Manual: DeepSeek web / otra IA gratuita', maxTokens:8192}
+  ]},
+  openrouter: { name: 'OpenRouter Free', keyPlaceholder: 'sk-or-...', models: [
+    {id:'openrouter/free', name:'OpenRouter Free Router (modelos gratuitos)', maxTokens:8192}
+  ]},
+  groq: { name: 'Groq Free', keyPlaceholder: 'gsk_...', models: [
+    {id:'openai/gpt-oss-120b', name:'GPT-OSS 120B (gratis con límites)', maxTokens:4096},
+    {id:'openai/gpt-oss-20b', name:'GPT-OSS 20B (gratis con límites)', maxTokens:4096},
+    {id:'qwen/qwen3.8-27b', name:'Qwen3.8 27B (gratis con límites)', maxTokens:4096}
+  ]},
   anthropic: { name: 'Anthropic Claude', keyPlaceholder: 'sk-ant-...', models: [
     {id:'claude-sonnet-4-20250514', name:'Claude Sonnet 4 (recomendado)', maxTokens:64000},
     {id:'claude-opus-4-20250514', name:'Claude Opus 4', maxTokens:32000},
@@ -722,7 +763,7 @@ const PROVIDERS = {
 const state = {
   targetId: 'scielo',
   formats: new Set(['xml', 'html', 'pdf', 'epub']),
-  settings: { provider: 'deepseek', model: 'deepseek-chat', apiKey: '', maxTokens: 8192, temperature: 0.15 },
+  settings: { provider: 'manual', model: 'manual-deepseek-web', apiKey: '', maxTokens: 8192, temperature: 0.15, version: 2 },
   customPrompts: {},
   outputs: { xml: '', html: '', pdfBlob: null, epubBlob: null, raw: '' },
   statuses: { xml: 'idle', html: 'idle', pdf: 'idle', epub: 'idle', raw: 'idle' },
@@ -752,6 +793,11 @@ function loadState() {
     if (saved.targetId) state.targetId = saved.targetId;
     if (saved.formats) state.formats = new Set(saved.formats);
     if (saved.settings) state.settings = { ...state.settings, ...saved.settings };
+    if (!saved.settings || saved.settings.version !== 2) {
+      state.settings.provider = 'manual';
+      state.settings.model = 'manual-deepseek-web';
+      state.settings.version = 2;
+    }
     if (saved.customPrompts) state.customPrompts = saved.customPrompts;
   } catch(e) {}
 }
@@ -864,8 +910,27 @@ RECUERDA: Devuelve EXCLUSIVAMENTE el archivo solicitado, sin explicaciones ni Ma
 /* ══════════════════════════════════════════════════════════════
    API CALLS
 ══════════════════════════════════════════════════════════════ */
+let manualResolver = null;
+function callManualAI(prompt) {
+  return new Promise((resolve, reject) => {
+    manualResolver = { resolve, reject };
+    $('#manual-prompt').value = prompt;
+    $('#manual-response').value = '';
+    $('#manual-modal').classList.add('open');
+    setStatus('Modo manual: copia el prompt, pégalo en DeepSeek web y pega aquí la respuesta.', 'warn');
+  });
+}
+function friendlyAPIError(name, status, text) {
+  const clean = (text || '').slice(0, 300);
+  if (status === 402) return `${name} 402: saldo insuficiente. La cuenta de la API no tiene balance. Usa el modo Manual sin API, OpenRouter Free o Groq Free, o recarga saldo. Detalle: ${clean}`;
+  if (status === 401) return `${name} 401: API Key inválida o no autorizada. Revisa la clave en Configuración. Detalle: ${clean}`;
+  if (status === 429) return `${name} 429: límite de uso alcanzado. Espera unos minutos o cambia de modelo/proveedor gratuito. Detalle: ${clean}`;
+  return `${name} ${status}: ${clean}`;
+}
+
 async function callAI(prompt) {
   const { provider, model, apiKey, maxTokens, temperature } = state.settings;
+  if (provider === 'manual') return callManualAI(prompt);
   if (!apiKey) throw new Error('Falta la API Key en Configuración.');
   
   const actualMaxTokens = Math.min(maxTokens, PROVIDERS[provider].models.find(m => m.id === model)?.maxTokens || 4096);
@@ -876,7 +941,7 @@ async function callAI(prompt) {
       headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true', 'content-type': 'application/json' },
       body: JSON.stringify({ model, max_tokens: actualMaxTokens, temperature, messages: [{ role: 'user', content: prompt }] })
     });
-    if (!r.ok) throw new Error(`Anthropic ${r.status}: ${(await r.text()).slice(0, 300)}`);
+    if (!r.ok) throw new Error(friendlyAPIError('Anthropic', r.status, await r.text()));
     const d = await r.json();
     return d.content.map(b => b.text || '').join('');
   }
@@ -886,14 +951,14 @@ async function callAI(prompt) {
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, max_tokens: actualMaxTokens, temperature, messages: [{ role: 'user', content: prompt }] })
     });
-    if (!r.ok) throw new Error(`OpenAI ${r.status}: ${(await r.text()).slice(0, 300)}`);
+    if (!r.ok) throw new Error(friendlyAPIError('OpenAI', r.status, await r.text()));
     const d = await r.json();
     return d.choices[0].message.content;
   }
   if (provider === 'gemini') {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: actualMaxTokens, temperature } }) });
-    if (!r.ok) throw new Error(`Gemini ${r.status}: ${(await r.text()).slice(0, 300)}`);
+    if (!r.ok) throw new Error(friendlyAPIError('Gemini', r.status, await r.text()));
     const d = await r.json();
     return (d.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
   }
@@ -903,7 +968,27 @@ async function callAI(prompt) {
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, max_tokens: actualMaxTokens, temperature, messages: [{ role: 'user', content: prompt }] })
     });
-    if (!r.ok) throw new Error(`DeepSeek ${r.status}: ${(await r.text()).slice(0, 300)}`);
+    if (!r.ok) throw new Error(friendlyAPIError('DeepSeek', r.status, await r.text()));
+    const d = await r.json();
+    return d.choices[0].message.content;
+  }
+  if (provider === 'openrouter') {
+    const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': location.href, 'X-Title': 'Editorial Suite' },
+      body: JSON.stringify({ model, max_tokens: actualMaxTokens, temperature, messages: [{ role: 'user', content: prompt }] })
+    });
+    if (!r.ok) throw new Error(friendlyAPIError('OpenRouter', r.status, await r.text()));
+    const d = await r.json();
+    return d.choices[0].message.content;
+  }
+  if (provider === 'groq') {
+    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, max_tokens: actualMaxTokens, temperature, messages: [{ role: 'user', content: prompt }] })
+    });
+    if (!r.ok) throw new Error(friendlyAPIError('Groq', r.status, await r.text()));
     const d = await r.json();
     return d.choices[0].message.content;
   }
@@ -1106,7 +1191,7 @@ async function convert() {
   const schema = $('#schema-input').value.trim();
 
   if (!article) { alert('Falta el artículo fuente en la entrada.'); setStatus('Falta el artículo fuente', 'err'); return; }
-  if (!state.settings.apiKey) { alert('Configura tu API key primero en el botón de Configuración.'); setStatus('Falta API key', 'err'); openSettings(); return; }
+  if (state.settings.provider !== 'manual' && !state.settings.apiKey) { alert('Configura tu API key primero en el botón de Configuración, o selecciona el modo Manual sin API.'); setStatus('Falta API key', 'err'); openSettings(); return; }
 
   const target = TARGETS[state.targetId];
   const needHTML = state.formats.has('html') || state.formats.has('pdf') || state.formats.has('epub');
@@ -1389,8 +1474,10 @@ function populateModels() {
   state.settings.maxTokens = Math.min(state.settings.maxTokens, cur.maxTokens);
   $('#cfg-maxtokens').value = state.settings.maxTokens;
   $('#cfg-maxtokens').max = cur.maxTokens;
-  $('#cfg-model-hint').textContent = `Máx. tokens permitidos: ${cur.maxTokens.toLocaleString()}`;
+  $('#cfg-model-hint').textContent = p === 'manual' ? 'Sin API Key: copiarás el prompt a DeepSeek web u otra IA gratuita y pegarás la respuesta.' : `Máx. tokens permitidos: ${cur.maxTokens.toLocaleString()}`;
   $('#cfg-apikey').placeholder = PROVIDERS[p].keyPlaceholder;
+  $('#cfg-apikey').disabled = p === 'manual';
+  if (p === 'manual') $('#cfg-apikey').value = '';
 }
 function openSettings() {
   $('#cfg-provider').value = state.settings.provider;
@@ -1403,7 +1490,8 @@ function openSettings() {
 function saveSettings() {
   state.settings.provider = $('#cfg-provider').value;
   state.settings.model = $('#cfg-model').value;
-  state.settings.apiKey = $('#cfg-apikey').value.trim();
+  state.settings.apiKey = state.settings.provider === 'manual' ? '' : $('#cfg-apikey').value.trim();
+  state.settings.version = 2;
   state.settings.maxTokens = parseInt($('#cfg-maxtokens').value, 10);
   state.settings.temperature = parseFloat($('#cfg-temp').value);
   saveState();
@@ -1458,6 +1546,31 @@ function bind() {
   }
   applyTheme((function(){ try{ return localStorage.getItem('editorial-suite-theme'); }catch(e){ return null; } })() || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
   if(themeBtn) themeBtn.onclick = () => applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+
+
+  const manualCopy = $('#btn-manual-copy');
+  if (manualCopy) manualCopy.onclick = async () => {
+    const txt = $('#manual-prompt').value;
+    try { await navigator.clipboard.writeText(txt); setStatus('Prompt copiado. Pégalo en DeepSeek web.', 'ok'); }
+    catch(e) { $('#manual-prompt').select(); document.execCommand('copy'); setStatus('Prompt seleccionado/copiado. Pégalo en DeepSeek web.', 'ok'); }
+  };
+  const manualUse = $('#btn-manual-use');
+  if (manualUse) manualUse.onclick = () => {
+    const response = $('#manual-response').value.trim();
+    if (!response) { alert('Pega primero la respuesta completa de la IA.'); return; }
+    $('#manual-modal').classList.remove('open');
+    if (manualResolver) manualResolver.resolve(response);
+    manualResolver = null;
+  };
+  const manualCancel = () => {
+    $('#manual-modal').classList.remove('open');
+    if (manualResolver) manualResolver.reject(new Error('Proceso manual cancelado por el usuario.'));
+    manualResolver = null;
+  };
+  const manualCancelBtn = $('#btn-manual-cancel');
+  if (manualCancelBtn) manualCancelBtn.onclick = manualCancel;
+  const manualCloseBtn = $('#btn-manual-close');
+  if (manualCloseBtn) manualCloseBtn.onclick = manualCancel;
 
   $('#btn-settings').onclick = openSettings;
   $('#btn-save-settings').onclick = saveSettings;

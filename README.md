@@ -94,3 +94,10 @@ Por eso, para usar todas las funciones se recomienda conexión a Internet al abr
 ## Estado del proyecto
 
 Proyecto en desarrollo. La versión actual se centra en una interfaz única, responsive y con modo claro/oscuro para facilitar la maquetación de artículos científicos desde cualquier dispositivo.
+
+## Uso sin saldo en USD
+
+Si no puedes recargar una API de pago, usa el proveedor **Manual sin API (DeepSeek web)** en Configuración. El programa mostrará el prompt completo para copiarlo en DeepSeek web u otra IA gratuita; luego pegas la respuesta en la ventana manual y Editorial Suite continúa generando XML, HTML, PDF, EPUB y ZIP.
+
+También se incluyen opciones gratuitas con límites, como **OpenRouter Free** y **Groq Free**, siempre que puedas registrarte y obtener una API Key sin pago. DeepSeek API requiere saldo prepagado; si devuelve error 402, significa saldo insuficiente.
+
