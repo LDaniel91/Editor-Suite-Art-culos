@@ -446,7 +446,7 @@ const COMMON_RULES = `REGLAS INVIOLABLES:
 - Conserva el orden de secciones, autores, referencias, figuras y tablas.
 - Conserva tildes, diéresis, comillas tipográficas, guiones y caracteres especiales.
 - Escapa correctamente entidades XML/HTML (&amp; &lt; &gt; &quot; &apos;).
-- Si falta un dato, deja el elemento vacío o un comentario <!-- FALTA: X -->. No inventes.
+- Si falta un dato, OMITE el elemento/etiqueta completo. Nunca dejes elementos vacíos, nunca uses comentarios <!-- FALTA --> y nunca pongas comentarios dentro de atributos. No inventes DOI, ORCID, fechas, volumen, número ni páginas.
 - No añadas texto generado por IA (ni introducciones, ni cierres).`;
 
 const COMMON_HTML_BASE = `ACTÚA COMO MAQUETADOR EDITORIAL CIENTÍFICO SENIOR, ESPECIALISTA EN HTML5 SEMÁNTICO, ACCESIBILIDAD (WCAG 2.2) Y PUBLICACIÓN ACADÉMICA.
@@ -485,17 +485,17 @@ const TARGETS = {
 Genera un archivo XML JATS válido según el SciELO Publishing Schema (SPS) para el artículo.
 
 ESTRUCTURA OBLIGATORIA:
-<article article-type="research-article" xmlns:xlink="http://www.w3.org/1999/xlink">
+<article article-type="review-article o research-article según el manuscrito" dtd-version="1.1" specific-use="sps-1.9" xmlns:xlink="http://www.w3.org/1999/xlink" xml:lang="es">
   <front>
-    <journal-meta>: <journal-id>, <journal-title>, <issn pub-type="ppub">, <issn pub-type="epub">, <publisher><publisher-name><publisher-loc>
-    <article-meta>: <article-id pub-id-type="doi">, <article-id pub-id-type="publisher-id">, <article-categories>, <title-group> con <article-title> + <trans-title>, <contrib-group> con ORCID (<contrib-id contrib-id-type="orcid">), <aff> completa, <email>, <pub-date date-type="received">, <pub-date date-type="accepted">, <pub-date date-type="published">, <volume>, <issue>, <fpage>/<lpage>/<elocation-id>, <abstract> + <trans-abstract>, <kwd-group kwd-group-type="author">, <permissions><license>
+    <journal-meta>: <journal-id>, <journal-title>, solo ISSN verificados en la fuente, <publisher><publisher-name><publisher-loc>
+    <article-meta>: incluye DOI, publisher-id, fechas, volumen, número y páginas SOLO si constan en la fuente; si no constan, omítelos. Incluye <article-categories>, <title-group> con <article-title> + <trans-title>, <contrib-group> con ORCID solo si consta, <aff> completa, <email>, <abstract> + <trans-abstract>, <kwd-group kwd-group-type="author">, <permissions><license> con href válido
   </front>
   <body>: <sec> anidadas (Introducción, Métodos, Resultados, Discusión, Conclusiones), párrafos <p>, <xref ref-type="bibr">, <disp-formula> MathML si aplica
   <back>: <ref-list> con <ref><mixed-citation> o <element-citation> (DOI, PMID, URL preservados), <ack>, <fn-group>
   <floats-group>: <fig><label><caption><graphic xlink:href>, <table-wrap><label><caption><table>
 </article>
 
-DOCTYPE obligatorio: <!DOCTYPE article PUBLIC "-//NLM//DTD JATS (Z39.96) Journal Publishing DTD v1.4 20241031//EN" "JATS-journalpublishing1-4.dtd">
+DOCTYPE obligatorio para SciELO/MEDISAN: <!DOCTYPE article PUBLIC "-//NLM//DTD JATS (Z39.96) Journal Publishing DTD v1.1 20151215//EN" "https://jats.nlm.nih.gov/publishing/1.1/JATS-journalpublishing1.dtd">
 
 ${COMMON_RULES}
 
@@ -505,16 +505,11 @@ Devuelve EXCLUSIVAMENTE el XML completo (desde <?xml version="1.0" encoding="UTF
 <meta name="citation_author" content="..."> (uno por autor)
 <meta name="citation_journal_title" content="...">
 <meta name="citation_issn" content="...">
-<meta name="citation_volume" content="...">
-<meta name="citation_issue" content="...">
-<meta name="citation_firstpage" content="...">
-<meta name="citation_lastpage" content="...">
-<meta name="citation_doi" content="...">
-<meta name="citation_publication_date" content="YYYY/MM/DD">
+Incluye citation_volume, citation_issue, citation_firstpage, citation_lastpage, citation_doi y citation_publication_date SOLO si constan en la fuente; si no constan, omite esas etiquetas. Nunca uses content="" ni comentarios FALTA.
 <meta name="citation_language" content="es">
 <meta name="DC.title" content="...">
 <meta name="DC.creator" content="...">
-<meta name="DC.date" content="YYYY-MM-DD">`
+Incluye DC.date solo si consta la fecha; si no consta, omítela.`
   },
   doaj: {
     name: 'DOAJ', icon: '📗', type: 'Dublin Core',
@@ -1006,6 +1001,22 @@ function extractXML(text) {
   if (start > 0) clean = clean.substring(start);
   return clean.trim();
 }
+function sanitizeGeneratedXML(xml) {
+  let clean = (xml || '').replace(/<!--[\s\S]*?-->/g, '');
+  const emptyTags = ['article-id','pub-date','volume','issue','fpage','lpage','elocation-id','contrib-id'];
+  emptyTags.forEach(tag => {
+    clean = clean.replace(new RegExp(`\s*<${tag}(?:\s[^>]*)?/>\s*`, 'g'), '\n');
+    clean = clean.replace(new RegExp(`\s*<${tag}(?:\s[^>]*)?>\s*</${tag}>\s*`, 'g'), '\n');
+  });
+  clean = clean.replace(/xlink:href=""/g, 'xlink:href="https://creativecommons.org/licenses/by/4.0/"');
+  return clean.trim();
+}
+function validateXML(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  const err = doc.querySelector('parsererror');
+  if (err) throw new Error('XML no válido: ' + err.textContent.replace(/\s+/g, ' ').slice(0, 300));
+  return true;
+}
 function extractHTML(text) {
   let clean = (text || '').trim();
   clean = clean.replace(/^```\w*\s*\n?/i, '').replace(/\n?\s*```$/i, '');
@@ -1097,7 +1108,7 @@ async function generateEPUBFromHTML(html) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
   const title = doc.querySelector('h1')?.textContent?.trim() || 'Artículo científico';
-  const authors = [...doc.querySelectorAll('meta[name="citation_author"], meta[name="DC.creator"]')].map(m => m.content).join('; ') || 'Autor';
+  const authors = [...new Set([...doc.querySelectorAll('meta[name="citation_author"], meta[name="DC.creator"]')].map(m => m.content.trim()).filter(Boolean))].join('; ') || 'Autor';
   const journal = doc.querySelector('meta[name="citation_journal_title"], meta[name="DC.publisher"]')?.content || 'Revista';
   const lang = doc.documentElement.lang || 'es';
   const cssContent = [...doc.querySelectorAll('style')].map(s => s.textContent).join('\n');
@@ -1223,7 +1234,8 @@ async function convert() {
         const raw = await callAI(fullPrompt);
         state.outputs.raw = raw;
         $('#raw-view').textContent = raw;
-        state.outputs.xml = extractXML(raw);
+        state.outputs.xml = sanitizeGeneratedXML(extractXML(raw));
+        validateXML(state.outputs.xml);
         renderXML(state.outputs.xml);
         if (state.outputs.xml) setDot('xml', 'ok');
       } catch (e) {
@@ -1411,7 +1423,7 @@ VALIDACIONES RECOMENDADAS:
 - XML: validar contra el esquema ${target.type}
 - HTML: https://validator.w3.org/
 - EPUB: https://github.com/w3c/epubcheck
-- PDF: texto seleccionable + metadatos completos
+- PDF: revisar visualmente; el PDF creado en navegador puede ser imagen. Para envío editorial usa un PDF con texto seleccionable.
 `;
     folder.file('README.txt', readme);
 
