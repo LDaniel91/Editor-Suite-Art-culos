@@ -478,10 +478,17 @@ const COMMON_RULES = `REGLAS INVIOLABLES:
 
 const XML_GRAPHIC_RULES = `
 
-TABLAS E ILUSTRACIONES EN XML:
-- Representa cada tabla como <table-wrap> con <label>, <caption> y <graphic xlink:href="...-gtN.png"/>, al estilo de los paquetes SciELO/MEDISAN donde las tablas viajan como imágenes gt1, gt2, etc.
-- Representa cada ilustración o figura como <fig> con <label>, <caption> y <graphic xlink:href="...-gfN.png"/>.
-- No conviertas las tablas en texto suelto ni omitas filas, columnas, notas al pie o valores. El programa generará los archivos de imagen y ajustará los nombres finales en el ZIP.`;
+TABLAS E ILUSTRACIONES EN XML (SciELO/SPS):
+- En la respuesta de la IA, representa cada tabla como <table-wrap> con <label>, <caption> y la tabla completa como <table> estructurada (thead/tbody/tfoot si aplica). No entregues solo un <graphic>: el programa necesita las filas y columnas para generar la imagen gtN y después dejará el XML final con <graphic xlink:href="...-gtN.png"/> dentro del paquete ZIP.
+- Representa cada ilustración o figura como <fig> con <label>, <caption> y <graphic xlink:href="...-gfN.png"/> solo si la figura existe en la fuente o en el HTML; no inventes figuras.
+- No conviertas las tablas en texto suelto ni omitas filas, columnas, notas al pie o valores.`;
+
+const XML_TABLE_RULES = `
+
+TABLAS EN XML (JATS/Redalyc):
+- Representa cada tabla como <table-wrap> con <label>, <caption> y <table> estructurada completa (thead/tbody/tfoot si aplica). No uses gráficos gt para tablas en este formato.
+- Representa cada ilustración o figura como <fig> con <label>, <caption> y <graphic xlink:href="...-gfN.png"/> solo si la figura existe en la fuente o en el HTML; no inventes figuras.
+- No conviertas las tablas en texto suelto ni omitas filas, columnas, notas al pie o valores.`;
 
 const COMMON_HTML_BASE = `ACTÚA COMO MAQUETADOR EDITORIAL CIENTÍFICO SENIOR, ESPECIALISTA EN HTML5 SEMÁNTICO, ACCESIBILIDAD (WCAG 2.2) Y PUBLICACIÓN ACADÉMICA.
 
@@ -521,12 +528,12 @@ Genera un archivo XML JATS válido según el SciELO Publishing Schema (SPS) para
 ESTRUCTURA OBLIGATORIA:
 <article article-type="review-article o research-article según el manuscrito" dtd-version="1.1" specific-use="sps-1.9" xmlns:xlink="http://www.w3.org/1999/xlink" xml:lang="es">
   <front>
-    <journal-meta>: <journal-id>, <journal-title>, solo ISSN verificados en la fuente, <publisher><publisher-name><publisher-loc>
+    <journal-meta>: <journal-id>, <journal-title>, ISSN y <publisher><publisher-name><publisher-loc> tomados de la fuente, de las NOTAS o del perfil de la revista. Si la revista es MEDISAN, usa journal-id publisher-id "san", ISSN epub 1029-3019, publisher-name "Centro Provincial de Ciencias Médicas" y licencia CC BY 4.0 con href https://creativecommons.org/licenses/by/4.0/. Para otra revista, no inventes estos datos: si no constan en la fuente o en las NOTAS, omite solo el dato ausente y deja el resto completo.
     <article-meta>: incluye DOI, publisher-id, fechas, volumen, número y páginas SOLO si constan en la fuente; si no constan, omítelos. Incluye <article-categories>, <title-group> con <article-title> + <trans-title>, <contrib-group> con ORCID solo si consta, <aff> completa, <email>, <abstract> + <trans-abstract>, <kwd-group kwd-group-type="author">, <permissions><license> con href válido
   </front>
   <body>: <sec> anidadas (Introducción, Métodos, Resultados, Discusión, Conclusiones), párrafos <p>, <xref ref-type="bibr">, <disp-formula> MathML si aplica
   <back>: <ref-list> con <ref><mixed-citation> o <element-citation> (DOI, PMID, URL preservados), <ack>, <fn-group>
-  <floats-group>: <fig><label><caption><graphic xlink:href>, <table-wrap><label><caption><table>
+  <floats-group>: <fig><label><caption><graphic xlink:href>, <table-wrap><label><caption><table> estructurada completa; el programa convertirá cada tabla a gráfico gtN y dejará el <graphic> en el XML final del paquete
 </article>
 
 DOCTYPE obligatorio para SciELO/MEDISAN: <!DOCTYPE article PUBLIC "-//NLM//DTD JATS (Z39.96) Journal Publishing DTD v1.1 20151215//EN" "https://jats.nlm.nih.gov/publishing/1.1/JATS-journalpublishing1.dtd">
@@ -603,8 +610,8 @@ Genera un XML JATS4R válido para el artículo.
 
 Estructura: <article article-type="..."><front><journal-meta><article-meta>...</article-meta></journal-meta></front><body><sec>...</sec></body><back><ref-list>...</ref-list></back></article>
 
-Metadatos obligatorios:
-- article-id (doi, publisher-id), title-group (article-title + trans-title), contrib-group con ORCID, aff completa, email, pub-date (received, accepted, published), abstract + trans-abstract, kwd-group, permissions con license, funding-group si aplica.
+Metadatos:
+- Incluye DOI, publisher-id, fechas, volumen, número y páginas SOLO si constan en la fuente; si no constan, omítelos. Incluye title-group (article-title + trans-title), contrib-group con ORCID solo si consta, aff completa, email, abstract + trans-abstract, kwd-group, permissions con license solo si consta o si las NOTAS indican la licencia de la revista, funding-group si aplica. No uses specific-use="sps-1.9" en Redalyc.
 
 ${COMMON_RULES}
 
@@ -980,7 +987,7 @@ function checkManualResponse(kind, response) {
   if (!text) return { ok: false, message: 'Pega primero la respuesta completa de la IA.' };
   if (kind === 'xml') {
     try {
-      const xml = sanitizeGeneratedXML(extractXML(text));
+      const xml = normalizeXMLForTarget(sanitizeGeneratedXML(extractXML(text)), state.targetId);
       if (!xml) return { ok: false, message: 'No se encontró XML en la respuesta pegada.' };
       validateXML(xml);
       return { ok: true, message: '' };
@@ -1149,6 +1156,56 @@ function sanitizeGeneratedXML(xml) {
   clean = clean.replace(/\sxlink:href=""/g, '');
   return clean.trim();
 }
+function normalizeXMLForTarget(xml, targetId) {
+  if (!xml) return xml;
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  if (doc.querySelector('parsererror')) return xml;
+  const root = doc.documentElement;
+  const XLINK = 'http://www.w3.org/1999/xlink';
+  const local = e => (e.tagName || '').toLowerCase();
+  const first = n => doc.getElementsByTagName(n)[0];
+  const textOf = n => { const e = first(n); return e ? (e.textContent || '').replace(/\s+/g, ' ').trim() : ''; };
+  const make = (name, text) => { const e = doc.createElement(name); if (text != null) e.textContent = text; return e; };
+  if (root && local(root) === 'article') {
+    root.setAttribute('dtd-version', '1.1');
+    if (!root.hasAttribute('xmlns:xlink')) root.setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:xlink', XLINK);
+    if (targetId === 'scielo') root.setAttribute('specific-use', 'sps-1.9');
+    if (targetId === 'redalyc' && root.getAttribute('specific-use') === 'sps-1.9') root.removeAttribute('specific-use');
+  }
+  // ORCID en formato iD desnudo, como en los paquetes MEDISAN publicados.
+  [...doc.getElementsByTagName('contrib-id')].forEach(e => {
+    if ((e.getAttribute('contrib-id-type') || '').toLowerCase() === 'orcid') {
+      e.textContent = (e.textContent || '').trim().replace(/^https?:\/\/orcid\.org\//i, '');
+    }
+  });
+  // Perfil MEDISAN: metadatos de revista verificados en el paquete publicado de referencia.
+  if (targetId === 'scielo' && /^medisan$/i.test(textOf('journal-title'))) {
+    const jm = first('journal-meta');
+    if (jm) {
+      if (!first('journal-id')) { const jid = make('journal-id', 'san'); jid.setAttribute('journal-id-type', 'publisher-id'); jm.insertBefore(jid, jm.firstChild); }
+      if (!first('issn')) { const issn = make('issn', '1029-3019'); issn.setAttribute('pub-type', 'epub'); jm.appendChild(issn); }
+      if (!first('publisher')) { const pub = make('publisher'); pub.appendChild(make('publisher-name', 'Centro Provincial de Ciencias Médicas')); jm.appendChild(pub); }
+    }
+    const am = first('article-meta');
+    if (am && !first('license')) {
+      const per = make('permissions');
+      const lic = make('license'); lic.setAttributeNS(XLINK, 'xlink:href', 'https://creativecommons.org/licenses/by/4.0/');
+      lic.appendChild(make('license-p', 'Este es un artículo publicado en acceso abierto bajo una licencia Creative Commons Attribution 4.0 International.'));
+      per.appendChild(lic);
+      const abs = first('abstract');
+      if (abs && abs.parentNode === am) am.insertBefore(per, abs); else am.appendChild(per);
+    }
+  }
+  // Retira elementos realmente vacíos que no deben viajar en el XML.
+  const keepEmpty = new Set(['graphic','inline-graphic','etal','break','supplementary-material']);
+  [...doc.querySelectorAll('*')].reverse().forEach(e => {
+    const t = local(e);
+    if (!keepEmpty.has(t) && e.children.length === 0 && !(e.textContent || '').trim() && e.attributes.length === 0) e.remove();
+  });
+  const m = xml.match(/<(?![?!])[A-Za-z_]/);
+  const prefix = m && m.index > 0 ? xml.slice(0, m.index) : '';
+  return prefix + new XMLSerializer().serializeToString(root);
+}
 function xmlStructureWarnings(xml, target) {
   const doc = new DOMParser().parseFromString(xml, 'application/xml');
   if (doc.querySelector('parsererror')) return [];
@@ -1163,6 +1220,17 @@ function xmlStructureWarnings(xml, target) {
     let missing = 0;
     doc.querySelectorAll('xref[rid]').forEach(x => x.getAttribute('rid').split(/\s+/).forEach(r => { if (r && !ids.has(r)) missing++; }));
     if (missing) w.push(`${missing} referencia(s) <xref> apuntan a un id que no existe.`);
+    const rootEl = doc.documentElement;
+    if (state.targetId === 'scielo') {
+      if (rootEl.getAttribute('specific-use') !== 'sps-1.9') w.push('SciELO/SPS requiere specific-use="sps-1.9" en <article>.');
+      ['journal-id','issn','publisher-name','license'].forEach(n => { if (!has(n)) w.push(`SciELO/SPS: falta <${n}>; complétalo desde la fuente, las NOTAS o el perfil de la revista.`); });
+      const lic = doc.getElementsByTagName('license')[0];
+      if (lic && !(lic.getAttribute('xlink:href') || lic.getAttribute('href') || '').startsWith('http')) w.push('SciELO/SPS: la licencia no tiene un href válido.');
+    }
+    if (state.targetId === 'redalyc') {
+      if (rootEl.getAttribute('specific-use') === 'sps-1.9') w.push('Redalyc/JATS4R no debe declarar specific-use="sps-1.9".');
+      [...doc.getElementsByTagName('table-wrap')].forEach(tw => { if (!tw.getElementsByTagName('table').length) w.push('Redalyc/JATS4R: una tabla quedó sin <table> estructurada.'); });
+    }
   } else if (target.dc) {
     ['dc:title', 'dc:creator'].forEach(n => { if (!has(n)) w.push(`Falta el elemento <${n}>.`); });
   }
@@ -1599,7 +1667,9 @@ function danglingGraphicRefs(xml, graphics) {
 }
 async function finalizeXMLGraphics(warnings) {
   if (!state.outputs.xml || !TARGETS[state.targetId].jats) return;
-  const graphics = state.outputs.html ? await generateGraphicsFromHTML(state.outputs.html) : await generateGraphicsFromXML(state.outputs.xml);
+  let graphics = state.outputs.html ? await generateGraphicsFromHTML(state.outputs.html) : await generateGraphicsFromXML(state.outputs.xml);
+  // Las tablas solo se convierten a gráficos gt en SciELO/SPS. En Redalyc/JATS4R quedan como <table> estructurada.
+  if (state.targetId !== 'scielo') graphics = graphics.filter(g => g.kind !== 'table');
   state.outputs.graphics = graphics;
   if (graphics.length) {
     state.outputs.xml = applyGraphicsToXML(state.outputs.xml, graphics, warnings, !!state.settings.keepTables);
@@ -2138,10 +2208,10 @@ async function convert() {
     if (state.formats.has('xml')) {
       step(`Generando XML (${target.type})...`, 'xml');
       try {
-        const prompt = getXMLPrompt() + (target.jats ? XML_GRAPHIC_RULES : '');
+        const prompt = getXMLPrompt() + (state.targetId === 'scielo' ? XML_GRAPHIC_RULES : (target.jats ? XML_TABLE_RULES : ''));
         const raw = await callAI(buildFullPrompt(prompt, fullArticle, template, schema), 'xml');
         state.outputs.rawXml = raw; updateRaw();
-        state.outputs.xml = sanitizeGeneratedXML(extractXML(raw));
+        state.outputs.xml = normalizeXMLForTarget(sanitizeGeneratedXML(extractXML(raw)), state.targetId);
         if (!state.outputs.xml) throw new Error('La respuesta no contiene XML.');
         validateXML(state.outputs.xml);
         state.outputs.xmlWarnings = xmlStructureWarnings(state.outputs.xml, target);
