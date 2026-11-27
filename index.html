@@ -1074,29 +1074,262 @@ function renderHTML(html) {
 ══════════════════════════════════════════════════════════════ */
 async function generatePDFFromHTML(html) {
   if (!html) throw new Error('Se requiere HTML para generar el PDF');
-  const target = TARGETS[state.targetId];
-  const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;height:1000px;border:none';
-  document.body.appendChild(iframe);
-  iframe.srcdoc = html;
+  const jsPDF = window.jspdf && window.jspdf.jsPDF;
+  if (!jsPDF) throw new Error('jsPDF no está disponible para generar el PDF');
 
-  await new Promise(res => {
-    iframe.onload = () => setTimeout(res, 400);
+  // PDF de texto (no captura de pantalla): fondo blanco, texto seleccionable
+  // y enlaces clicables, sin heredar el tema oscuro de la aplicación.
+  const parsed = new DOMParser().parseFromString(html, 'text/html');
+  const root = parsed.querySelector('article') || parsed.querySelector('main') || parsed.body;
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+
+  const pageW = 210, pageH = 297, margin = 18, top = 16, bottom = 16;
+  const contentW = pageW - margin * 2;
+  let y = top;
+
+  const meta = name => {
+    const el = parsed.querySelector(`meta[name="${name}"]`);
+    return el ? (el.getAttribute('content') || '') : '';
+  };
+  pdf.setProperties({
+    title: meta('citation_title') || parsed.title || 'Artículo',
+    author: meta('citation_author') || meta('DC.creator') || '',
+    subject: meta('citation_journal_title') || '',
+    keywords: meta('citation_keywords') || ''
   });
 
-  try {
-    const html2pdf = window.html2pdf;
-    const blob = await html2pdf().set({
-      margin: [15, 15, 15, 15],
-      filename: target.xmlFile.replace('.xml', '.pdf'),
-      image: { type: 'jpeg', quality: 0.95 },
-      html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    }).from(iframe.contentDocument.body).outputPdf('blob');
-    return blob;
-  } finally {
-    document.body.removeChild(iframe);
+  const INK = [17, 17, 17], LINK = [6, 69, 173], HEAD = [26, 77, 110], ACCENT = [138, 31, 45], GRAY = [90, 90, 90];
+
+  function styleFor(frag, base) {
+    const s = Object.assign({}, base, frag || {});
+    s.font = (frag && frag.font) || base.font || 'times';
+    s.bold = !!(base.bold || (frag && frag.bold));
+    s.italic = !!(base.italic || (frag && frag.italic));
+    s.size = base.size || 10.5;
+    if (frag && (frag.sup || frag.sub)) s.size = s.size * 0.72;
+    if (frag && frag.link) s.color = LINK;
+    else if (frag && frag.color) s.color = frag.color;
+    else s.color = base.color || INK;
+    return s;
   }
+  function applyStyle(s) {
+    pdf.setFont(s.font, s.bold && s.italic ? 'bolditalic' : s.bold ? 'bold' : s.italic ? 'italic' : 'normal');
+    pdf.setFontSize(s.size);
+    pdf.setTextColor(s.color[0], s.color[1], s.color[2]);
+  }
+  function widthOf(text, frag, base) { applyStyle(styleFor(frag, base)); return pdf.getTextWidth(text); }
+  function newPage() { pdf.addPage(); y = top; }
+  function ensure(h) { if (y + h > pageH - bottom) newPage(); }
+
+  function fragmentsFromNode(node, inherited) {
+    const out = [];
+    const base = inherited || {};
+    function walk(n, cur) {
+      if (n.nodeType === 3) { if (n.nodeValue) out.push(Object.assign({}, cur, { text: n.nodeValue })); return; }
+      if (n.nodeType !== 1) return;
+      const tag = n.tagName.toUpperCase();
+      if (tag === 'SCRIPT' || tag === 'STYLE') return;
+      if (tag === 'BR') { out.push({ break: true }); return; }
+      const next = Object.assign({}, cur);
+      if (tag === 'STRONG' || tag === 'B') next.bold = true;
+      if (tag === 'EM' || tag === 'I') next.italic = true;
+      if (tag === 'SUP') next.sup = true;
+      if (tag === 'SUB') next.sub = true;
+      if (tag === 'CODE') next.font = 'courier';
+      if (tag === 'A') {
+        const href = n.getAttribute('href') || '';
+        next.color = LINK;
+        if (/^(https?:|mailto:)/i.test(href)) next.link = href;
+      }
+      for (const child of n.childNodes) walk(child, next);
+    }
+    walk(node, base);
+    return out;
+  }
+
+  function wrapFragments(frags, maxW, base) {
+    const tokens = [];
+    let pendingSpace = false;
+    for (const frag of frags) {
+      if (frag.break) { tokens.push({ break: true }); pendingSpace = false; continue; }
+      const raw = String(frag.text || '');
+      if (/^\s/.test(raw)) pendingSpace = true;
+      const parts = raw.split(/(\s+)/);
+      let spaceBefore = pendingSpace;
+      for (const part of parts) {
+        if (!part) continue;
+        if (/^\s+$/.test(part)) { spaceBefore = true; continue; }
+        tokens.push({ text: part, frag, spaceBefore });
+        spaceBefore = false;
+      }
+      pendingSpace = /\s$/.test(raw);
+    }
+    const lines = [];
+    let line = [], lineW = 0;
+    for (const tok of tokens) {
+      if (tok.break) { lines.push(line); line = []; lineW = 0; continue; }
+      const w = widthOf(tok.text, tok.frag, base);
+      let spaceW = (line.length && tok.spaceBefore) ? widthOf(' ', tok.frag, base) : 0;
+      if (line.length && lineW + spaceW + w > maxW) { lines.push(line); line = []; lineW = 0; spaceW = 0; }
+      line.push(Object.assign({}, tok, { w, spaceW }));
+      lineW += spaceW + w;
+    }
+    if (line.length) lines.push(line);
+    return lines;
+  }
+
+  function drawLine(line, x, base, align, isLast, maxW) {
+    const lineH = (base.size || 10.5) * 0.48;
+    const baseline = y + lineH * 0.78;
+    const totalW = line.reduce((sum, t) => sum + t.spaceW + t.w, 0);
+    const gaps = line.filter(t => t.spaceW > 0).length;
+    const extra = (align === 'justify' && !isLast && gaps > 0) ? Math.max(0, (maxW - totalW) / gaps) : 0;
+    let cursor = x;
+    for (const tok of line) {
+      cursor += tok.spaceW + (tok.spaceW > 0 ? extra : 0);
+      const s = styleFor(tok.frag, base);
+      applyStyle(s);
+      const yy = baseline + (tok.frag && tok.frag.sup ? -1.1 : tok.frag && tok.frag.sub ? 0.8 : 0);
+      if (tok.frag && tok.frag.link) {
+        pdf.textWithLink(tok.text, cursor, yy, { url: tok.frag.link });
+        pdf.setDrawColor(LINK[0], LINK[1], LINK[2]); pdf.setLineWidth(0.15);
+        pdf.line(cursor, yy + 0.7, cursor + tok.w, yy + 0.7);
+      } else {
+        pdf.text(tok.text, cursor, yy);
+      }
+      cursor += tok.w;
+    }
+  }
+
+  function addBlock(frags, opts) {
+    opts = opts || {};
+    const base = { font: opts.font || 'times', size: opts.size || 10.5, bold: !!opts.bold, italic: !!opts.italic, color: opts.color || INK };
+    const indent = opts.indent || 0;
+    const maxW = contentW - indent;
+    const lines = wrapFragments(frags, maxW, base);
+    if (!lines.length) return;
+    y += opts.before || 0;
+    const lineH = base.size * 0.48;
+    lines.forEach((line, i) => {
+      ensure(lineH);
+      drawLine(line, margin + indent, base, opts.align || 'justify', i === lines.length - 1, maxW);
+      y += lineH;
+    });
+    y += (opts.after == null ? 2 : opts.after);
+  }
+  function addElementText(el, opts) { addBlock(fragmentsFromNode(el, {}), opts || {}); }
+  function upperFrags(el) { return fragmentsFromNode(el, {}).map(f => f.text ? Object.assign({}, f, { text: f.text.toUpperCase() }) : f); }
+
+  function addList(list, ordered) {
+    const items = [...list.children].filter(el => el.tagName && el.tagName.toUpperCase() === 'LI');
+    items.forEach((li, i) => {
+      const prefix = ordered ? `${i + 1}. ` : '• ';
+      const frags = [{ text: prefix }].concat(fragmentsFromNode(li, {}));
+      addBlock(frags, { indent: 6, before: 0, after: 1, align: 'left' });
+    });
+    y += 2;
+  }
+
+  function addTable(table) {
+    const caption = table.querySelector('caption');
+    if (caption) addElementText(caption, { font: 'helvetica', size: 9.5, bold: true, color: HEAD, before: 3, after: 1, align: 'left' });
+    const rows = [...table.querySelectorAll('tr')];
+    if (!rows.length) return;
+    const colCount = Math.max(...rows.map(r => r.children.length));
+    const colW = contentW / colCount;
+    rows.forEach((row, ri) => {
+      const cells = [...row.children];
+      const isHeader = !!row.closest('thead') || cells.some(c => c.tagName && c.tagName.toUpperCase() === 'TH');
+      const base = { font: isHeader ? 'helvetica' : 'times', size: 9, bold: isHeader, color: INK };
+      const cellLines = cells.map(c => wrapFragments(fragmentsFromNode(c, {}), colW - 3, base));
+      const lineH = base.size * 0.48;
+      const rowH = Math.max(...cellLines.map(l => Math.max(1, l.length))) * lineH + 2;
+      ensure(rowH);
+      cells.forEach((cell, ci) => {
+        const x = margin + ci * colW;
+        if (isHeader) { pdf.setFillColor(235, 235, 235); pdf.rect(x, y, colW, rowH, 'F'); }
+        pdf.setDrawColor(180, 180, 180); pdf.setLineWidth(0.15); pdf.rect(x, y, colW, rowH, 'S');
+        const savedY = y;
+        y = savedY + 1;
+        cellLines[ci].forEach((line, li) => { drawLine(line, x + 1.5, base, 'left', li === cellLines[ci].length - 1, colW - 3); y += lineH; });
+        y = savedY;
+      });
+      y += rowH;
+    });
+    y += 3;
+  }
+
+  async function addImage(img) {
+    const src = img.getAttribute('src') || '';
+    if (!/^data:image\//i.test(src)) {
+      const alt = img.getAttribute('alt');
+      if (alt) addBlock([{ text: alt, italic: true }], { size: 9, color: GRAY, align: 'left' });
+      return;
+    }
+    const format = /data:image\/png/i.test(src) ? 'PNG' : 'JPEG';
+    const dims = await new Promise(res => {
+      const im = new Image();
+      im.onload = () => res({ w: im.naturalWidth || 1, h: im.naturalHeight || 1 });
+      im.onerror = () => res(null);
+      im.src = src;
+    });
+    if (!dims) return;
+    let w = contentW, h = w * dims.h / dims.w;
+    if (h > 90) { h = 90; w = h * dims.w / dims.h; }
+    ensure(h + 2);
+    pdf.addImage(src, format, margin + (contentW - w) / 2, y, w, h);
+    y += h + 2;
+  }
+
+  async function processChildren(el) {
+    for (const child of [...el.children]) await processElement(child);
+  }
+  async function processElement(el) {
+    const tag = el.tagName.toUpperCase();
+    const cls = el.getAttribute('class') || '';
+    if (tag === 'H1') { addElementText(el, { font: 'helvetica', size: 16, bold: true, color: HEAD, before: 2, after: 4, align: 'left' }); return; }
+    if (tag === 'H2') {
+      addBlock(upperFrags(el), { font: 'helvetica', size: 12, bold: true, color: HEAD, before: 5, after: 1, align: 'left' });
+      ensure(2); pdf.setDrawColor(200, 200, 200); pdf.setLineWidth(0.3); pdf.line(margin, y, margin + contentW, y); y += 3;
+      return;
+    }
+    if (tag === 'H3') { addElementText(el, { font: 'helvetica', size: 11, bold: true, color: HEAD, before: 4, after: 1.5, align: 'left' }); return; }
+    if (tag === 'H4' || tag === 'H5' || tag === 'H6') { addElementText(el, { font: 'helvetica', size: 10.5, bold: true, before: 3, after: 1, align: 'left' }); return; }
+    if (tag === 'P') {
+      if (/categoria/.test(cls)) addBlock(upperFrags(el), { font: 'helvetica', size: 8.5, bold: true, color: ACCENT, after: 2, align: 'left' });
+      else if (/trans-title/.test(cls)) addElementText(el, { font: 'helvetica', size: 11, italic: true, color: GRAY, after: 3, align: 'left' });
+      else if (/meta-autor|afil/.test(cls)) addElementText(el, { font: 'helvetica', size: 9.5, after: 1.5, align: 'left' });
+      else addElementText(el, { size: 10.5, after: 2 });
+      return;
+    }
+    if (tag === 'UL') { addList(el, false); return; }
+    if (tag === 'OL') { addList(el, true); return; }
+    if (tag === 'TABLE') { addTable(el); return; }
+    if (tag === 'HR') { ensure(3); pdf.setDrawColor(200, 200, 200); pdf.line(margin, y + 1, margin + contentW, y + 1); y += 4; return; }
+    if (tag === 'IMG') { await addImage(el); return; }
+    if (tag === 'BLOCKQUOTE') { addElementText(el, { size: 10, italic: true, indent: 8, after: 2 }); return; }
+    if (tag === 'PRE') {
+      String(el.textContent || '').split('\n').forEach(line => addBlock([{ text: line || ' ' }], { font: 'courier', size: 8.5, after: 0, align: 'left' }));
+      y += 2; return;
+    }
+    if (['ARTICLE', 'MAIN', 'SECTION', 'DIV', 'HEADER', 'FOOTER', 'ASIDE', 'FIGURE', 'FIGCAPTION', 'BODY'].includes(tag)) {
+      if (tag === 'FIGCAPTION') { addElementText(el, { size: 9, italic: true, color: GRAY, align: 'left' }); return; }
+      await processChildren(el);
+      return;
+    }
+    if (el.children && el.children.length) { await processChildren(el); return; }
+    if ((el.textContent || '').trim()) addElementText(el, { size: 10.5, after: 2 });
+  }
+
+  await processChildren(root);
+
+  const total = pdf.getNumberOfPages();
+  for (let i = 1; i <= total; i++) {
+    pdf.setPage(i);
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(120, 120, 120);
+    pdf.text(`Página ${i} de ${total}`, pageW / 2, pageH - 8, { align: 'center' });
+  }
+  return pdf.output('blob');
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -1423,7 +1656,7 @@ VALIDACIONES RECOMENDADAS:
 - XML: validar contra el esquema ${target.type}
 - HTML: https://validator.w3.org/
 - EPUB: https://github.com/w3c/epubcheck
-- PDF: revisar visualmente; el PDF creado en navegador puede ser imagen. Para envío editorial usa un PDF con texto seleccionable.
+- PDF: se genera como PDF de texto con fondo blanco, estilos editoriales y enlaces clicables.
 `;
     folder.file('README.txt', readme);
 

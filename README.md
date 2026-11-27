@@ -15,7 +15,7 @@ El proyecto está pensado para trabajar desde el navegador, tanto en computadora
 - Generación de formatos:
   - XML editorial.
   - HTML maquetado.
-  - PDF derivado del HTML.
+  - PDF de texto derivado del HTML, con fondo blanco, estilos editoriales, texto seleccionable y enlaces clicables.
   - EPUB derivado del HTML.
   - Vista Raw.
   - Paquete ZIP con los archivos generados.
@@ -80,7 +80,7 @@ El archivo `index.html` carga estas librerías desde CDN:
 
 - Mammoth, para leer documentos `.docx`.
 - JSZip, para crear paquetes ZIP y EPUB.
-- html2pdf.js, para generar PDF desde HTML.
+- jsPDF (incluido en el paquete html2pdf.js), para generar el PDF de texto desde el HTML.
 
 Por eso, para usar todas las funciones se recomienda conexión a Internet al abrir la herramienta.
 
