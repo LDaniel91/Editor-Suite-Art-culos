@@ -8,6 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <style>
   :root{
     --bg:#050505;--panel:#101010;--panel2:#1c1c1c;--border:#4a4a4a;
@@ -91,6 +92,9 @@
   .empty-output{flex:1;display:grid;place-items:center;color:var(--muted);text-align:center;padding:40px;font-size:12px}
   .empty-output .icon{font-size:42px;margin-bottom:12px;opacity:.5}
   iframe.preview-frame{flex:1;width:100%;border:none;background:#fff}
+  .xml-toolbar{display:none;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--panel2)}
+  .xml-toolbar .mini-btn.active{border-color:var(--primary);color:var(--primary)}
+  .xml-toolbar span{color:var(--muted);font-size:12px}
   .actionbar{display:flex;align-items:center;gap:12px;padding:12px 20px;background:var(--panel);border-top:1px solid var(--border);flex-wrap:wrap}
   .status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
   .status .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
@@ -295,6 +299,12 @@
       <div class="tab-content">
         <div class="tab-panel active" id="tab-xml">
           <div class="empty-output" id="xml-empty"><div><div class="icon">🧾</div><div>El XML aparecerá aquí</div></div></div>
+          <div class="xml-toolbar" id="xml-toolbar">
+            <button class="mini-btn active" id="btn-xml-preview" type="button">Vista previa</button>
+            <button class="mini-btn" id="btn-xml-code" type="button">Código XML</button>
+            <span>La vista previa muestra el artículo renderizado desde el XML.</span>
+          </div>
+          <iframe class="preview-frame" id="xml-preview" style="display:none" sandbox="allow-same-origin" title="Vista previa del XML"></iframe>
           <div class="code-view" id="xml-view" style="display:none"></div>
         </div>
         <div class="tab-panel" id="tab-html">
@@ -416,18 +426,23 @@
       <button class="close-btn" id="btn-manual-close" type="button">×</button>
     </div>
     <div class="modal-body">
-      <p style="margin:0 0 10px;color:var(--muted);font-size:13px;line-height:1.5">Copia este prompt, pégalo en DeepSeek web u otra IA gratuita, espera la respuesta completa y pégala abajo. El programa continuará con esa respuesta.</p>
+      <p style="margin:0 0 10px;color:var(--muted);font-size:13px;line-height:1.5">Copia este prompt, pégalo en DeepSeek web u otra IA gratuita, espera la respuesta completa y pégala abajo. Si la respuesta se corta, pega la continuación al final del mismo cuadro o carga el archivo de respuesta. El programa no aceptará una respuesta incompleta.</p>
+      <p id="manual-expected" style="margin:0 0 10px;color:var(--muted);font-size:12px;line-height:1.5"></p>
       <div class="field">
-        <label>Prompt para copiar</label>
-        <textarea id="manual-prompt" readonly style="min-height:180px"></textarea>
+        <label>Prompt para copiar <span id="manual-prompt-count" style="color:var(--muted);font-weight:400"></span></label>
+        <textarea id="manual-prompt" readonly spellcheck="false" autocomplete="off" style="min-height:220px"></textarea>
       </div>
       <div class="field">
-        <label>Respuesta de la IA</label>
-        <textarea id="manual-response" placeholder="Pega aquí la respuesta completa de DeepSeek web..." style="min-height:180px"></textarea>
+        <label>Respuesta de la IA <span id="manual-response-count" style="color:var(--muted);font-weight:400"></span></label>
+        <textarea id="manual-response" placeholder="Pega aquí la respuesta completa de la IA..." spellcheck="false" autocomplete="off" style="min-height:260px"></textarea>
       </div>
+      <input type="file" id="manual-file-input" accept=".txt,.md,.html,.htm,.xml" style="display:none">
     </div>
     <div class="modal-foot">
       <button class="btn" id="btn-manual-copy" type="button">Copiar prompt</button>
+      <button class="btn" id="btn-manual-download-prompt" type="button">Descargar prompt</button>
+      <button class="btn" id="btn-manual-load-file" type="button">Cargar respuesta</button>
+      <button class="btn" id="btn-manual-continue" type="button">Pegar continuación</button>
       <button class="btn" id="btn-manual-cancel" type="button">Cancelar</button>
       <button class="btn primary" id="btn-manual-use" type="button">Usar respuesta</button>
     </div>
@@ -448,6 +463,13 @@ const COMMON_RULES = `REGLAS INVIOLABLES:
 - Escapa correctamente entidades XML/HTML (&amp; &lt; &gt; &quot; &apos;).
 - Si falta un dato, OMITE el elemento/etiqueta completo. Nunca dejes elementos vacíos, nunca uses comentarios <!-- FALTA --> y nunca pongas comentarios dentro de atributos. No inventes DOI, ORCID, fechas, volumen, número ni páginas.
 - No añadas texto generado por IA (ni introducciones, ni cierres).`;
+
+const XML_GRAPHIC_RULES = `
+
+TABLAS E ILUSTRACIONES EN XML:
+- Representa cada tabla como <table-wrap> con <label>, <caption> y <graphic xlink:href="...-gtN.png"/>, al estilo de los paquetes SciELO/MEDISAN donde las tablas viajan como imágenes gt1, gt2, etc.
+- Representa cada ilustración o figura como <fig> con <label>, <caption> y <graphic xlink:href="...-gfN.png"/>.
+- No conviertas las tablas en texto suelto ni omitas filas, columnas, notas al pie o valores. El programa generará los archivos de imagen y ajustará los nombres finales en el ZIP.`;
 
 const COMMON_HTML_BASE = `ACTÚA COMO MAQUETADOR EDITORIAL CIENTÍFICO SENIOR, ESPECIALISTA EN HTML5 SEMÁNTICO, ACCESIBILIDAD (WCAG 2.2) Y PUBLICACIÓN ACADÉMICA.
 
@@ -760,7 +782,8 @@ const state = {
   formats: new Set(['xml', 'html', 'pdf', 'epub']),
   settings: { provider: 'manual', model: 'manual-deepseek-web', apiKey: '', maxTokens: 8192, temperature: 0.15, version: 2 },
   customPrompts: {},
-  outputs: { xml: '', html: '', pdfBlob: null, epubBlob: null, raw: '' },
+  outputs: { xml: '', html: '', pdfBlob: null, epubBlob: null, raw: '', graphics: [] },
+  xmlViewMode: 'preview',
   statuses: { xml: 'idle', html: 'idle', pdf: 'idle', epub: 'idle', raw: 'idle' },
   running: false
 };
@@ -906,13 +929,56 @@ RECUERDA: Devuelve EXCLUSIVAMENTE el archivo solicitado, sin explicaciones ni Ma
    API CALLS
 ══════════════════════════════════════════════════════════════ */
 let manualResolver = null;
-function callManualAI(prompt) {
+let manualExpectedKind = '';
+function updateManualCounters() {
+  const promptEl = $('#manual-prompt'), responseEl = $('#manual-response');
+  const pc = $('#manual-prompt-count'), rc = $('#manual-response-count'), exp = $('#manual-expected');
+  if (pc && promptEl) pc.textContent = `(${promptEl.value.length.toLocaleString()} caracteres)`;
+  if (rc && responseEl) rc.textContent = `(${responseEl.value.length.toLocaleString()} caracteres)`;
+  if (exp) {
+    exp.textContent = manualExpectedKind === 'xml'
+      ? 'Respuesta esperada: XML completo. Debe terminar con la etiqueta de cierre del elemento raíz, por ejemplo </article>.'
+      : manualExpectedKind === 'html'
+        ? 'Respuesta esperada: HTML completo. Debe terminar con </html>.'
+        : '';
+  }
+}
+function checkManualResponse(kind, response) {
+  const text = (response || '').trim();
+  if (!text) return { ok: false, message: 'Pega primero la respuesta completa de la IA.' };
+  if (kind === 'xml') {
+    try {
+      const xml = sanitizeGeneratedXML(extractXML(text));
+      if (!xml) return { ok: false, message: 'No se encontró XML en la respuesta pegada.' };
+      validateXML(xml);
+      return { ok: true, message: '' };
+    } catch (e) {
+      return { ok: false, message: 'La respuesta XML está incompleta o no es válida: ' + e.message + '\n\nNo cierres esta ventana. Pide a la IA que continúe exactamente donde se detuvo y pega la continuación al final del cuadro, o carga el archivo completo de respuesta.' };
+    }
+  }
+  if (kind === 'html') {
+    const html = extractHTML(text);
+    const lower = html.toLowerCase();
+    if (!lower.includes('</html>') || !lower.includes('</body>')) {
+      return { ok: false, message: 'La respuesta HTML está incompleta: falta </body> o </html>.\n\nNo cierres esta ventana. Pide a la IA que continúe exactamente donde se detuvo y pega la continuación al final del cuadro, o carga el archivo completo de respuesta.' };
+    }
+    if (!/<h1[\s>]/i.test(html) && !/<article[\s>]/i.test(html)) {
+      return { ok: false, message: 'La respuesta HTML no parece contener el artículo completo (no se encontró <article> ni <h1>). Revisa el pegado o carga el archivo completo.' };
+    }
+    return { ok: true, message: '' };
+  }
+  return { ok: true, message: '' };
+}
+function callManualAI(prompt, expectedKind) {
   return new Promise((resolve, reject) => {
     manualResolver = { resolve, reject };
+    manualExpectedKind = expectedKind || '';
     $('#manual-prompt').value = prompt;
     $('#manual-response').value = '';
+    updateManualCounters();
     $('#manual-modal').classList.add('open');
-    setStatus('Modo manual: copia el prompt, pégalo en DeepSeek web y pega aquí la respuesta.', 'warn');
+    setStatus('Modo manual: copia el prompt, pégalo en la IA y pega aquí la respuesta completa.', 'warn');
+    setTimeout(() => { const r = $('#manual-response'); if (r) r.focus(); }, 50);
   });
 }
 function friendlyAPIError(name, status, text) {
@@ -923,9 +989,9 @@ function friendlyAPIError(name, status, text) {
   return `${name} ${status}: ${clean}`;
 }
 
-async function callAI(prompt) {
+async function callAI(prompt, expectedKind) {
   const { provider, model, apiKey, maxTokens, temperature } = state.settings;
-  if (provider === 'manual') return callManualAI(prompt);
+  if (provider === 'manual') return callManualAI(prompt, expectedKind);
   if (!apiKey) throw new Error('Falta la API Key en Configuración.');
   
   const actualMaxTokens = Math.min(maxTokens, PROVIDERS[provider].models.find(m => m.id === model)?.maxTokens || 4096);
@@ -993,12 +1059,26 @@ async function callAI(prompt) {
 /* ══════════════════════════════════════════════════════════════
    LIMPIEZA / EXTRACCIÓN
 ══════════════════════════════════════════════════════════════ */
+function stripCodeFences(text) {
+  return (text || '')
+    .replace(/```(?:xml|html|htm)?\s*/gi, '')
+    .replace(/```/g, '')
+    .trim();
+}
 function extractXML(text) {
-  let clean = (text || '').trim();
-  clean = clean.replace(/^```\w*\s*\n?/i, '').replace(/\n?\s*```$/i, '');
-  let start = clean.search(/<\?xml/i);
-  if (start < 0) start = clean.search(/<(!DOCTYPE|[a-zA-Z]+[:\s])/i);
+  let clean = stripCodeFences(text);
+  const lower = clean.toLowerCase();
+  let start = lower.search(/<\?xml/i);
+  if (start < 0) start = lower.search(/<!doctype\s+/i);
+  if (start < 0) start = clean.search(/</);
   if (start > 0) clean = clean.substring(start);
+  const rootMatch = clean.match(/<([A-Za-z_][\w:.-]*)(\s|>|\/>)/);
+  if (rootMatch) {
+    const root = rootMatch[1].toLowerCase();
+    const close = '</' + root + '>';
+    const end = clean.toLowerCase().lastIndexOf(close);
+    if (end >= 0) clean = clean.substring(0, end + close.length);
+  }
   return clean.trim();
 }
 function sanitizeGeneratedXML(xml) {
@@ -1018,15 +1098,24 @@ function validateXML(xml) {
   return true;
 }
 function extractHTML(text) {
-  let clean = (text || '').trim();
-  clean = clean.replace(/^```\w*\s*\n?/i, '').replace(/\n?\s*```$/i, '');
-  const idx = clean.search(/<!DOCTYPE\s+html/i);
-  if (idx > 0) clean = clean.substring(idx);
-  else if (idx < 0) {
-    const hIdx = clean.search(/<html[\s>]/i);
-    if (hIdx > 0) clean = clean.substring(hIdx);
-  }
+  let clean = stripCodeFences(text);
+  const lower = clean.toLowerCase();
+  let start = lower.search(/<!doctype\s+html/i);
+  if (start < 0) start = lower.search(/<html[\s>]/i);
+  if (start > 0) clean = clean.substring(start);
+  const end = clean.toLowerCase().lastIndexOf('</html>');
+  if (end >= 0) clean = clean.substring(0, end + '</html>'.length);
   return clean.trim();
+}
+function validateHTMLComplete(html) {
+  const lower = (html || '').toLowerCase();
+  if (!lower.includes('<html') || !lower.includes('</html>') || !lower.includes('</body>')) {
+    throw new Error('HTML incompleto: falta <html>, </body> o </html>. Pega la continuación de la respuesta o carga el archivo completo.');
+  }
+  if (!/<h1[\s>]/i.test(html) && !/<article[\s>]/i.test(html)) {
+    throw new Error('HTML incompleto: no se encontró <article> ni <h1> del artículo.');
+  }
+  return true;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -1043,19 +1132,342 @@ function highlightXML(xml) {
   return h;
 }
 
+function xmlText(el) { return el ? (el.textContent || '').replace(/\s+/g, ' ').trim() : ''; }
+function xmlInlineHTML(node) {
+  if (!node) return '';
+  if (node.nodeType === 3) return escapeHTML(node.nodeValue || '');
+  if (node.nodeType !== 1) return '';
+  const tag = node.tagName.toLowerCase();
+  const inner = [...node.childNodes].map(xmlInlineHTML).join('');
+  if (tag === 'bold') return `<strong>${inner}</strong>`;
+  if (tag === 'italic') return `<em>${inner}</em>`;
+  if (tag === 'sup') return `<sup>${inner}</sup>`;
+  if (tag === 'sub') return `<sub>${inner}</sub>`;
+  if (tag === 'xref') {
+    const rid = node.getAttribute('rid') || '';
+    return `<sup><a href="#${escapeHTML(rid)}">${inner}</a></sup>`;
+  }
+  if (tag === 'ext-link') {
+    const href = node.getAttribute('xlink:href') || node.getAttribute('href') || '';
+    return href ? `<a href="${escapeHTML(href)}">${inner}</a>` : inner;
+  }
+  if (tag === 'email') return `<a href="mailto:${escapeHTML(xmlText(node))}">${inner}</a>`;
+  if (tag === 'break') return '<br>';
+  return inner;
+}
+function xmlBlockHTML(node, depth) {
+  if (!node || node.nodeType !== 1) return '';
+  const tag = node.tagName.toLowerCase();
+  if (tag === 'sec') {
+    const title = [...node.children].find(c => c.tagName.toLowerCase() === 'title');
+    const level = Math.min(2 + (depth || 0), 4);
+    const titleHTML = title ? `<h${level}>${xmlInlineHTML(title)}</h${level}>` : '';
+    const children = [...node.children].filter(c => c !== title).map(c => xmlBlockHTML(c, (depth || 0) + 1)).join('');
+    return `<section>${titleHTML}${children}</section>`;
+  }
+  if (tag === 'p') return `<p>${[...node.childNodes].map(xmlInlineHTML).join('')}</p>`;
+  if (tag === 'list') {
+    const ordered = (node.getAttribute('list-type') || '').includes('order');
+    const items = [...node.children].filter(c => c.tagName.toLowerCase() === 'list-item').map(li => `<li>${[...li.childNodes].map(n => n.nodeType === 1 && n.tagName.toLowerCase() === 'p' ? xmlInlineHTML(n) : xmlBlockHTML(n, depth)).join('')}</li>`).join('');
+    return ordered ? `<ol>${items}</ol>` : `<ul>${items}</ul>`;
+  }
+  if (tag === 'table-wrap') {
+    const label = xmlText(node.getElementsByTagName('label')[0]);
+    const caption = xmlText(node.getElementsByTagName('caption')[0]);
+    const graphic = node.getElementsByTagName('graphic')[0];
+    const href = graphic ? (graphic.getAttribute('xlink:href') || graphic.getAttribute('href') || '') : '';
+    const generated = (state.outputs.graphics || []).find(g => g.name === href);
+    const foot = xmlText(node.getElementsByTagName('table-wrap-foot')[0]);
+    let body = '';
+    if (generated && generated.dataUrl) body = `<img src="${generated.dataUrl}" alt="${escapeHTML((label + ' ' + caption).trim() || href)}">`;
+    else if (href) body = `<div class="graphic-placeholder">Imagen de tabla: ${escapeHTML(href)}</div>`;
+    else {
+      const table = node.getElementsByTagName('table')[0];
+      if (table) body = xmlTableHTML(table);
+    }
+    return `<figure class="table-figure"><figcaption>${escapeHTML((label + ' ' + caption).trim())}</figcaption>${body}${foot ? `<p class="table-foot">${escapeHTML(foot)}</p>` : ''}</figure>`;
+  }
+  if (tag === 'fig') {
+    const label = xmlText(node.getElementsByTagName('label')[0]);
+    const caption = xmlText(node.getElementsByTagName('caption')[0]);
+    const graphic = node.getElementsByTagName('graphic')[0];
+    const href = graphic ? (graphic.getAttribute('xlink:href') || graphic.getAttribute('href') || '') : '';
+    const generated = (state.outputs.graphics || []).find(g => g.name === href);
+    const body = generated && generated.dataUrl ? `<img src="${generated.dataUrl}" alt="${escapeHTML((label + ' ' + caption).trim() || href)}">` : `<div class="graphic-placeholder">Imagen: ${escapeHTML(href)}</div>`;
+    return `<figure>${body}<figcaption>${escapeHTML((label + ' ' + caption).trim())}</figcaption></figure>`;
+  }
+  if (tag === 'disp-formula') return `<p class="formula">${escapeHTML(xmlText(node))}</p>`;
+  return [...node.children].map(c => xmlBlockHTML(c, depth)).join('');
+}
+function xmlTableHTML(table) {
+  const rows = [...table.getElementsByTagName('tr')].map(tr => {
+    const cells = [...tr.children].map(cell => {
+      const name = cell.tagName.toLowerCase() === 'th' ? 'th' : 'td';
+      return `<${name}>${xmlInlineHTML(cell)}</${name}>`;
+    }).join('');
+    return `<tr>${cells}</tr>`;
+  }).join('');
+  return `<table>${rows}</table>`;
+}
+function buildXMLPreviewHTML(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  if (doc.querySelector('parsererror')) return '<!DOCTYPE html><html lang="es"><body><p>El XML no es válido y no se puede previsualizar.</p></body></html>';
+  const title = xmlText(doc.getElementsByTagName('article-title')[0]) || 'Artículo';
+  const transTitle = xmlText(doc.getElementsByTagName('trans-title')[0]);
+  const journal = xmlText(doc.getElementsByTagName('journal-title')[0]);
+  const authors = [...doc.getElementsByTagName('contrib')].map(c => {
+    const name = c.getElementsByTagName('name')[0];
+    const surname = xmlText(name ? name.getElementsByTagName('surname')[0] : null);
+    const given = xmlText(name ? name.getElementsByTagName('given-names')[0] : null);
+    const affRefs = [...c.getElementsByTagName('xref')].filter(x => x.getAttribute('ref-type') === 'aff').map(x => x.textContent.trim()).join(',');
+    return `${escapeHTML((given + ' ' + surname).trim())}${affRefs ? `<sup>${escapeHTML(affRefs)}</sup>` : ''}`;
+  }).join(', ');
+  const affs = [...doc.getElementsByTagName('aff')].map(a => `<p class="aff">${xmlInlineHTML(a)}</p>`).join('');
+  const corresp = [...doc.getElementsByTagName('corresp')].map(c => `<p class="aff">${[...c.childNodes].map(xmlInlineHTML).join('')}</p>`).join('');
+  const abstract = doc.getElementsByTagName('abstract')[0];
+  const transAbstract = doc.getElementsByTagName('trans-abstract')[0];
+  const abstractHTML = abstract ? `<section class="abstract"><h2>RESUMEN</h2>${[...abstract.children].map(c => xmlBlockHTML(c, 0)).join('')}</section>` : '';
+  const transAbstractHTML = transAbstract ? `<section class="abstract" lang="en"><h2>ABSTRACT</h2>${[...transAbstract.children].map(c => xmlBlockHTML(c, 0)).join('')}</section>` : '';
+  const body = doc.getElementsByTagName('body')[0];
+  const bodyHTML = body ? [...body.children].map(c => xmlBlockHTML(c, 0)).join('') : '';
+  const floats = doc.getElementsByTagName('floats-group')[0];
+  const floatsHTML = floats ? [...floats.children].map(c => xmlBlockHTML(c, 0)).join('') : '';
+  const refs = [...doc.getElementsByTagName('ref')].map(r => `<li id="${escapeHTML(r.getAttribute('id') || '')}">${[...r.childNodes].map(n => n.nodeType === 1 && n.tagName.toLowerCase() === 'label' ? '' : xmlInlineHTML(n)).join('')}</li>`).join('');
+  const refsHTML = refs ? `<section><h2>REFERENCIAS BIBLIOGRÁFICAS</h2><ol>${refs}</ol></section>` : '';
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${escapeHTML(title)}</title><style>body{font-family:Georgia,serif;line-height:1.7;color:#1f2430;background:#fbfaf8;margin:0}article{max-width:52rem;margin:0 auto;padding:2.5rem 2rem}h1,h2,h3,h4{font-family:Arial,sans-serif;color:#1a4d6e}h2{text-transform:uppercase;border-bottom:2px solid #d8d5cf;padding-bottom:.3rem}.journal,.aff{font-family:Arial,sans-serif;color:#4a5568}.trans{font-style:italic;color:#4a5568}.abstract{background:#f3f1ec;border-left:4px solid #1a4d6e;padding:1rem 1.25rem;margin:1.5rem 0}p{text-align:justify}table{width:100%;border-collapse:collapse;margin:1rem 0}th,td{border:1px solid #d8d5cf;padding:.5rem;text-align:left}thead th{background:#1a4d6e;color:#fff}figure{margin:1.5rem 0}figcaption{font-family:Arial,sans-serif;font-weight:700;color:#1a4d6e;margin-bottom:.5rem}img{max-width:100%;height:auto;border:1px solid #d8d5cf;background:#fff}.graphic-placeholder{border:1px dashed #8a1f2d;padding:1rem;color:#8a1f2d;background:#fff}.table-foot{font-size:.9rem;color:#4a5568}a{color:#8a1f2d}</style></head><body><article>${journal ? `<p class="journal">${escapeHTML(journal)}</p>` : ''}<h1>${escapeHTML(title)}</h1>${transTitle ? `<p class="trans" lang="en">${escapeHTML(transTitle)}</p>` : ''}${authors ? `<p>${authors}</p>` : ''}${affs}${corresp}${abstractHTML}${transAbstractHTML}${bodyHTML}${floatsHTML}${refsHTML}</article></body></html>`;
+}
+function setXMLViewMode(mode) {
+  state.xmlViewMode = mode;
+  const previewBtn = $('#btn-xml-preview'), codeBtn = $('#btn-xml-code');
+  if (previewBtn) previewBtn.classList.toggle('active', mode === 'preview');
+  if (codeBtn) codeBtn.classList.toggle('active', mode === 'code');
+  const preview = $('#xml-preview'), view = $('#xml-view');
+  if (preview) preview.style.display = mode === 'preview' && state.outputs.xml ? 'block' : 'none';
+  if (view) view.style.display = mode === 'code' && state.outputs.xml ? 'block' : 'none';
+}
 function renderXML(xml) {
-  const empty = $('#xml-empty'), view = $('#xml-view');
+  const empty = $('#xml-empty'), view = $('#xml-view'), preview = $('#xml-preview'), toolbar = $('#xml-toolbar');
   if (!xml) {
     empty.style.display = 'grid'; view.style.display = 'none';
+    if (preview) preview.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
     setDot('xml', 'err'); return;
   }
-  empty.style.display = 'none'; view.style.display = 'block';
+  empty.style.display = 'none';
+  if (toolbar) toolbar.style.display = 'flex';
   view.innerHTML = highlightXML(xml);
+  if (preview) preview.srcdoc = buildXMLPreviewHTML(xml);
+  setXMLViewMode(state.xmlViewMode || 'preview');
   try {
     const doc = new DOMParser().parseFromString(xml, 'application/xml');
     const errs = doc.querySelectorAll('parsererror');
     setDot('xml', errs.length ? 'warn' : 'ok');
   } catch { setDot('xml', 'warn'); }
+}
+
+function graphicBaseName() {
+  const target = TARGETS[state.targetId];
+  return target.xmlFile.replace(/\.xml$/i, '');
+}
+function wrapCanvasText(ctx, text, maxW) {
+  const words = String(text || '').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+  if (!words.length) return [''];
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    const test = line ? line + ' ' + word : word;
+    if (ctx.measureText(test).width <= maxW || !line) line = test;
+    else { lines.push(line); line = word; }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+async function renderTableImage(tableData) {
+  const rows = tableData.rows || [];
+  const colCount = Math.max(1, ...rows.map(r => r.cells.length));
+  const measure = document.createElement('canvas').getContext('2d');
+  measure.font = '28px Arial';
+  const colWeights = Array.from({ length: colCount }, (_, i) => {
+    const maxLen = Math.max(...rows.map(r => (r.cells[i] || '').length), 8);
+    return Math.min(3.2, Math.max(1, maxLen / 14));
+  });
+  const totalWeight = colWeights.reduce((a, b) => a + b, 0);
+  const width = 1600, padding = 36, usable = width - padding * 2;
+  const colWs = colWeights.map(w => usable * w / totalWeight);
+  const fontSize = 27, lineH = 34, cellPad = 14;
+  const rowLayouts = rows.map(row => {
+    const cellLines = row.cells.map((cell, i) => {
+      measure.font = row.header ? '700 27px Arial' : '27px Arial';
+      return wrapCanvasText(measure, cell, colWs[i] - cellPad * 2);
+    });
+    const h = Math.max(...cellLines.map(l => l.length)) * lineH + cellPad * 2;
+    return { row, cellLines, h };
+  });
+  const captionLines = tableData.caption ? wrapCanvasText(measure, tableData.caption, usable) : [];
+  const footLines = tableData.foot ? wrapCanvasText(measure, tableData.foot, usable) : [];
+  const height = Math.ceil(padding * 2 + captionLines.length * 38 + rowLayouts.reduce((a, r) => a + r.h, 0) + footLines.length * 32 + 20);
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, width, height);
+  ctx.textBaseline = 'top';
+  let y = padding;
+  ctx.fillStyle = '#1a4d6e'; ctx.font = '700 30px Arial';
+  captionLines.forEach(line => { ctx.fillText(line, padding, y); y += 38; });
+  if (captionLines.length) y += 8;
+  rowLayouts.forEach((layout, ri) => {
+    let x = padding;
+    layout.row.cells.forEach((cell, ci) => {
+      const w = colWs[ci];
+      ctx.fillStyle = layout.row.header ? '#1a4d6e' : (ri % 2 ? '#f3f1ec' : '#ffffff');
+      ctx.fillRect(x, y, w, layout.h);
+      ctx.strokeStyle = '#b8b3aa'; ctx.lineWidth = 1.5; ctx.strokeRect(x, y, w, layout.h);
+      ctx.fillStyle = layout.row.header ? '#ffffff' : '#111111';
+      ctx.font = layout.row.header ? '700 27px Arial' : '27px Arial';
+      layout.cellLines[ci].forEach((line, li) => ctx.fillText(line, x + cellPad, y + cellPad + li * lineH));
+      x += w;
+    });
+    y += layout.h;
+  });
+  if (footLines.length) {
+    y += 10; ctx.fillStyle = '#4a5568'; ctx.font = '24px Arial';
+    footLines.forEach(line => { ctx.fillText(line, padding, y); y += 32; });
+  }
+  const dataUrl = canvas.toDataURL('image/png');
+  const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+  return { blob, dataUrl };
+}
+function tableDataFromHTMLTable(table) {
+  const caption = table.querySelector('caption') ? table.querySelector('caption').textContent.replace(/\s+/g, ' ').trim() : '';
+  const rows = [...table.querySelectorAll('tr')].map(tr => ({
+    header: !!tr.closest('thead') || [...tr.children].some(c => c.tagName.toLowerCase() === 'th'),
+    foot: !!tr.closest('tfoot'),
+    cells: [...tr.children].map(c => c.textContent.replace(/\s+/g, ' ').trim())
+  }));
+  const footRows = rows.filter(r => r.foot);
+  return { caption, rows: rows.filter(r => !r.foot), foot: footRows.map(r => r.cells.join(' ')).join(' ') };
+}
+function tableDataFromXMLTableWrap(tw) {
+  const label = xmlText(tw.getElementsByTagName('label')[0]);
+  const caption = xmlText(tw.getElementsByTagName('caption')[0]);
+  const table = tw.getElementsByTagName('table')[0];
+  const rows = table ? [...table.getElementsByTagName('tr')].map(tr => ({
+    header: [...tr.children].some(c => c.tagName.toLowerCase() === 'th'),
+    cells: [...tr.children].map(c => xmlText(c))
+  })) : [];
+  return { caption: (label + ' ' + caption).trim(), rows, foot: xmlText(tw.getElementsByTagName('table-wrap-foot')[0]) };
+}
+async function blobToDataURL(blob) {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+async function generateGraphicsFromHTML(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const graphics = [];
+  const base = graphicBaseName();
+  const tables = [...doc.querySelectorAll('table')];
+  for (let i = 0; i < tables.length; i++) {
+    const data = tableDataFromHTMLTable(tables[i]);
+    const img = await renderTableImage(data);
+    graphics.push({ kind: 'table', name: `${base}-gt${i + 1}.png`, blob: img.blob, dataUrl: img.dataUrl, caption: data.caption, label: `Tabla ${i + 1}.` });
+  }
+  const imgs = [...doc.querySelectorAll('img')];
+  for (let i = 0; i < imgs.length; i++) {
+    const src = imgs[i].getAttribute('src') || '';
+    try {
+      const blob = await (await fetch(src)).blob();
+      if (!blob || !blob.size) continue;
+      const ext = /png/i.test(blob.type) ? 'png' : 'jpg';
+      graphics.push({ kind: 'figure', name: `${base}-gf${i + 1}.${ext}`, blob, dataUrl: await blobToDataURL(blob), caption: imgs[i].getAttribute('alt') || '', label: `Figura ${i + 1}.` });
+    } catch (e) {}
+  }
+  return graphics;
+}
+async function generateGraphicsFromXML(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  if (doc.querySelector('parsererror')) return [];
+  const graphics = [];
+  const base = graphicBaseName();
+  const wraps = [...doc.getElementsByTagName('table-wrap')];
+  for (let i = 0; i < wraps.length; i++) {
+    const data = tableDataFromXMLTableWrap(wraps[i]);
+    if (!data.rows.length) continue;
+    const img = await renderTableImage(data);
+    graphics.push({ kind: 'table', name: `${base}-gt${i + 1}.png`, blob: img.blob, dataUrl: img.dataUrl, caption: data.caption, label: `Tabla ${i + 1}.` });
+  }
+  return graphics;
+}
+function applyGraphicsToXML(xml, graphics) {
+  if (!xml || !graphics || !graphics.length) return xml;
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  if (doc.querySelector('parsererror')) return xml;
+  const XLINK = 'http://www.w3.org/1999/xlink';
+  const makeGraphic = name => {
+    const g = doc.createElement('graphic');
+    g.setAttributeNS(XLINK, 'xlink:href', name);
+    return g;
+  };
+  const ensureFloats = () => {
+    let floats = doc.getElementsByTagName('floats-group')[0];
+    if (!floats) {
+      floats = doc.createElement('floats-group');
+      doc.documentElement.appendChild(floats);
+    }
+    return floats;
+  };
+  const tableGraphics = graphics.filter(g => g.kind === 'table');
+  const wraps = [...doc.getElementsByTagName('table-wrap')];
+  wraps.forEach((tw, i) => {
+    const g = tableGraphics[i];
+    if (!g) return;
+    [...tw.getElementsByTagName('table')].forEach(t => t.remove());
+    [...tw.getElementsByTagName('graphic')].forEach(t => t.remove());
+    const foot = tw.getElementsByTagName('table-wrap-foot')[0];
+    if (foot) tw.insertBefore(makeGraphic(g.name), foot); else tw.appendChild(makeGraphic(g.name));
+  });
+  for (let i = wraps.length; i < tableGraphics.length; i++) {
+    const g = tableGraphics[i];
+    const tw = doc.createElement('table-wrap');
+    tw.setAttribute('id', 'tab' + (i + 1));
+    const label = doc.createElement('label'); label.textContent = g.label || `Tabla ${i + 1}.`; tw.appendChild(label);
+    if (g.caption) { const cap = doc.createElement('caption'); const title = doc.createElement('title'); title.textContent = g.caption.replace(/^Tabla\s+\d+\.\s*/i, ''); cap.appendChild(title); tw.appendChild(cap); }
+    tw.appendChild(makeGraphic(g.name));
+    ensureFloats().appendChild(tw);
+  }
+  const figureGraphics = graphics.filter(g => g.kind === 'figure');
+  const figs = [...doc.getElementsByTagName('fig')];
+  figs.forEach((fig, i) => {
+    const g = figureGraphics[i];
+    if (!g) return;
+    [...fig.getElementsByTagName('graphic')].forEach(t => t.remove());
+    fig.appendChild(makeGraphic(g.name));
+  });
+  for (let i = figs.length; i < figureGraphics.length; i++) {
+    const g = figureGraphics[i];
+    const fig = doc.createElement('fig');
+    fig.setAttribute('id', 'fig' + (i + 1));
+    const label = doc.createElement('label'); label.textContent = g.label || `Figura ${i + 1}.`; fig.appendChild(label);
+    if (g.caption) { const cap = doc.createElement('caption'); const title = doc.createElement('title'); title.textContent = g.caption; cap.appendChild(title); fig.appendChild(cap); }
+    fig.appendChild(makeGraphic(g.name));
+    ensureFloats().appendChild(fig);
+  }
+  const rootStart = xml.search(/<article[\s>]/i);
+  const prefix = rootStart > 0 ? xml.slice(0, rootStart) : '';
+  return prefix + new XMLSerializer().serializeToString(doc.documentElement);
+}
+async function finalizeXMLGraphics() {
+  if (!state.outputs.xml) return;
+  const graphics = state.outputs.html ? await generateGraphicsFromHTML(state.outputs.html) : await generateGraphicsFromXML(state.outputs.xml);
+  state.outputs.graphics = graphics;
+  if (graphics.length) {
+    state.outputs.xml = applyGraphicsToXML(state.outputs.xml, graphics);
+    validateXML(state.outputs.xml);
+    renderXML(state.outputs.xml);
+  }
 }
 
 function renderHTML(html) {
@@ -1072,10 +1484,24 @@ function renderHTML(html) {
 /* ══════════════════════════════════════════════════════════════
    GENERACIÓN DE PDF
 ══════════════════════════════════════════════════════════════ */
+async function loadJsPDF() {
+  const existing = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+  if (existing) return existing;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('No se pudo cargar jsPDF para generar el PDF. Revisa la conexión o vuelve a abrir el programa.'));
+    document.head.appendChild(s);
+  });
+  const loaded = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+  if (!loaded) throw new Error('jsPDF no está disponible para generar el PDF');
+  return loaded;
+}
 async function generatePDFFromHTML(html) {
   if (!html) throw new Error('Se requiere HTML para generar el PDF');
-  const jsPDF = window.jspdf && window.jspdf.jsPDF;
-  if (!jsPDF) throw new Error('jsPDF no está disponible para generar el PDF');
+  validateHTMLComplete(html);
+  const jsPDF = await loadJsPDF();
 
   // PDF de texto (no captura de pantalla): fondo blanco, texto seleccionable
   // y enlaces clicables, sin heredar el tema oscuro de la aplicación.
@@ -1099,6 +1525,12 @@ async function generatePDFFromHTML(html) {
   });
 
   const INK = [17, 17, 17], LINK = [6, 69, 173], HEAD = [26, 77, 110], ACCENT = [138, 31, 45], GRAY = [90, 90, 90];
+  const pdfText = s => String(s || '')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\u2022/g, '-')
+    .replace(/\u00A0/g, ' ');
 
   function styleFor(frag, base) {
     const s = Object.assign({}, base, frag || {});
@@ -1159,7 +1591,7 @@ async function generatePDFFromHTML(html) {
       for (const part of parts) {
         if (!part) continue;
         if (/^\s+$/.test(part)) { spaceBefore = true; continue; }
-        tokens.push({ text: part, frag, spaceBefore });
+        tokens.push({ text: pdfText(part), frag, spaceBefore });
         spaceBefore = false;
       }
       pendingSpace = /\s$/.test(raw);
@@ -1168,7 +1600,25 @@ async function generatePDFFromHTML(html) {
     let line = [], lineW = 0;
     for (const tok of tokens) {
       if (tok.break) { lines.push(line); line = []; lineW = 0; continue; }
-      const w = widthOf(tok.text, tok.frag, base);
+      let w = widthOf(tok.text, tok.frag, base);
+      if (w > maxW && tok.text.length > 1) {
+        let rest = tok.text;
+        let first = true;
+        while (rest) {
+          let cut = rest.length;
+          while (cut > 1 && widthOf(rest.slice(0, cut), tok.frag, base) > maxW) cut--;
+          const piece = rest.slice(0, cut);
+          const pieceW = widthOf(piece, tok.frag, base);
+          let pieceSpace = (line.length && first && tok.spaceBefore) ? widthOf(' ', tok.frag, base) : 0;
+          if (line.length && lineW + pieceSpace + pieceW > maxW) { lines.push(line); line = []; lineW = 0; pieceSpace = 0; }
+          line.push(Object.assign({}, tok, { text: piece, w: pieceW, spaceW: pieceSpace }));
+          lineW += pieceSpace + pieceW;
+          rest = rest.slice(cut);
+          first = false;
+          if (rest) { lines.push(line); line = []; lineW = 0; }
+        }
+        continue;
+      }
       let spaceW = (line.length && tok.spaceBefore) ? widthOf(' ', tok.frag, base) : 0;
       if (line.length && lineW + spaceW + w > maxW) { lines.push(line); line = []; lineW = 0; spaceW = 0; }
       line.push(Object.assign({}, tok, { w, spaceW }));
@@ -1191,7 +1641,8 @@ async function generatePDFFromHTML(html) {
       applyStyle(s);
       const yy = baseline + (tok.frag && tok.frag.sup ? -1.1 : tok.frag && tok.frag.sub ? 0.8 : 0);
       if (tok.frag && tok.frag.link) {
-        pdf.textWithLink(tok.text, cursor, yy, { url: tok.frag.link });
+        if (typeof pdf.textWithLink === 'function') pdf.textWithLink(tok.text, cursor, yy, { url: tok.frag.link });
+        else { pdf.text(tok.text, cursor, yy); if (typeof pdf.link === 'function') pdf.link(cursor, yy - 3, tok.w, 4, { url: tok.frag.link }); }
         pdf.setDrawColor(LINK[0], LINK[1], LINK[2]); pdf.setLineWidth(0.15);
         pdf.line(cursor, yy + 0.7, cursor + tok.w, yy + 0.7);
       } else {
@@ -1327,9 +1778,13 @@ async function generatePDFFromHTML(html) {
   for (let i = 1; i <= total; i++) {
     pdf.setPage(i);
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(120, 120, 120);
-    pdf.text(`Página ${i} de ${total}`, pageW / 2, pageH - 8, { align: 'center' });
+    const footer = `Página ${i} de ${total}`;
+    const footerW = pdf.getTextWidth(footer);
+    pdf.text(footer, (pageW - footerW) / 2, pageH - 8);
   }
-  return pdf.output('blob');
+  const blob = pdf.output('blob');
+  if (!blob || !blob.size) throw new Error('El PDF se generó vacío. Revisa que el HTML esté completo.');
+  return blob;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -1442,12 +1897,13 @@ async function convert() {
 
   state.running = true;
   $('#btn-convert').disabled = true;
-  state.outputs = { xml: '', html: '', pdfBlob: null, epubBlob: null, raw: '' };
+  state.outputs = { xml: '', html: '', pdfBlob: null, epubBlob: null, raw: '', graphics: [] };
   state.statuses = { xml: 'idle', html: 'idle', pdf: 'idle', epub: 'idle', raw: 'idle' };
   Object.keys(state.statuses).forEach(k => setDot(k, ''));
   $('#raw-view').textContent = '';
 
   const steps = [];
+  const errors = [];
   if (state.formats.has('xml')) steps.push('xml');
   if (needHTML) steps.push('html');
   if (state.formats.has('pdf')) steps.push('pdf');
@@ -1463,14 +1919,18 @@ async function convert() {
       setDot('xml', 'warn');
       setProgress((stepIdx - 1) / steps.length * 100);
       try {
-        const fullPrompt = buildFullPrompt(getXMLPrompt(), article, template, schema);
-        const raw = await callAI(fullPrompt);
+        const fullPrompt = buildFullPrompt(getXMLPrompt() + XML_GRAPHIC_RULES, article, template, schema);
+        const raw = await callAI(fullPrompt, 'xml');
         state.outputs.raw = raw;
         $('#raw-view').textContent = raw;
         state.outputs.xml = sanitizeGeneratedXML(extractXML(raw));
         validateXML(state.outputs.xml);
         renderXML(state.outputs.xml);
         if (state.outputs.xml) setDot('xml', 'ok');
+        if (!needHTML) {
+          try { await finalizeXMLGraphics(); }
+          catch (ge) { errors.push('Gráficos XML: ' + ge.message); }
+        }
       } catch (e) {
         setDot('xml', 'err');
         setStatus('Error API XML: ' + e.message, 'err');
@@ -1487,12 +1947,18 @@ async function convert() {
       setProgress((stepIdx - 1) / steps.length * 100);
       try {
         const fullPrompt = buildFullPrompt(getHTMLPrompt(), article, template, schema);
-        const raw = await callAI(fullPrompt);
+        const raw = await callAI(fullPrompt, 'html');
         state.outputs.html = extractHTML(raw);
+        validateHTMLComplete(state.outputs.html);
         renderHTML(state.outputs.html);
         if (state.outputs.html) setDot('html', 'ok');
+        if (state.outputs.xml) {
+          try { await finalizeXMLGraphics(); }
+          catch (ge) { errors.push('Gráficos XML: ' + ge.message); }
+        }
       } catch (e) {
         setDot('html', 'err');
+        errors.push('HTML: ' + e.message);
         setStatus('Error API HTML: ' + e.message, 'err');
         alert('Error al generar HTML:\n' + e.message);
       }
@@ -1518,7 +1984,13 @@ async function convert() {
           </div>`;
       } catch (e) {
         setDot('pdf', 'err');
+        errors.push('PDF: ' + e.message);
         console.error('PDF error:', e);
+        setStatus('Error al generar PDF: ' + e.message, 'err');
+        $('#pdf-empty').style.display = 'none';
+        $('#pdf-container').style.display = 'block';
+        $('#pdf-container').innerHTML = `<div style="background:#fff;padding:20px;border-radius:8px;color:#000;max-width:700px;margin:0 auto"><h3 style="color:#b91c1c;margin-bottom:10px">Error al generar PDF</h3><p>${escapeHTML(e.message)}</p><p style="margin-top:10px;font-size:13px;color:#555">Revisa que el HTML esté completo y vuelve a generar. Si el error es de carga de jsPDF, revisa la conexión.</p></div>`;
+        alert('Error al generar PDF:\n' + e.message);
       }
     }
 
@@ -1543,6 +2015,7 @@ async function convert() {
         $('#epub-view').innerHTML += `<div style="margin-top:16px"><button onclick="downloadEPUB()" style="padding:8px 16px;border-radius:6px;border:1px solid #0ea5a4;background:#0ea5a4;color:#fff;cursor:pointer;font-family:inherit">💾 Descargar EPUB</button></div>`;
       } catch (e) {
         setDot('epub', 'err');
+        errors.push('EPUB: ' + e.message);
         console.error('EPUB error:', e);
       }
     }
@@ -1554,8 +2027,12 @@ async function convert() {
     const hasAny = state.outputs.xml || state.outputs.html || state.outputs.pdfBlob || state.outputs.epubBlob;
     $('#btn-download-zip').disabled = !hasAny;
     renderPackageInfo();
-    setStatus(`✓ Completado (${target.name})`, 'ok');
-    setTimeout(() => setStatus('Listo'), 2500);
+    if (errors.length) {
+      setStatus('Completado con errores: ' + errors.join(' · '), 'err');
+    } else {
+      setStatus(`✓ Completado (${target.name})`, 'ok');
+      setTimeout(() => setStatus('Listo'), 2500);
+    }
   } catch (e) {
     console.error(e);
     setStatus('Error general: ' + e.message, 'err');
@@ -1578,8 +2055,11 @@ function switchTab(name) {
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
 window.downloadPDF = () => {
@@ -1607,6 +2087,7 @@ function renderPackageInfo() {
   if (state.outputs.html) items.push({ f: target.xmlFile.replace('.xml', '.html'), t: 'HTML5 semántico' });
   if (state.outputs.pdfBlob) items.push({ f: target.xmlFile.replace('.xml', '.pdf'), t: 'PDF (A4)' });
   if (state.outputs.epubBlob) items.push({ f: target.xmlFile.replace('.xml', '.epub'), t: 'EPUB 3 accesible' });
+  (state.outputs.graphics || []).forEach(g => items.push({ f: g.name, t: g.kind === 'table' ? 'Imagen de tabla para XML' : 'Imagen de figura para XML' }));
   if (!items.length) {
     $('#package-empty').style.display = 'grid';
     $('#package-info').style.display = 'none';
@@ -1640,6 +2121,7 @@ async function downloadZIP() {
     if (state.outputs.html) folder.file(target.xmlFile.replace('.xml', '.html'), state.outputs.html);
     if (state.outputs.pdfBlob) folder.file(target.xmlFile.replace('.xml', '.pdf'), state.outputs.pdfBlob);
     if (state.outputs.epubBlob) folder.file(target.xmlFile.replace('.xml', '.epub'), state.outputs.epubBlob);
+    (state.outputs.graphics || []).forEach(g => { if (g.blob) folder.file(g.name, g.blob); });
 
     const readme = `PAQUETE EDITORIAL — ${target.name}
 Generado: ${new Date().toISOString()}
@@ -1651,6 +2133,7 @@ ${state.outputs.xml ? `- ${target.xmlFile}  → XML / Metadatos (${target.type})
 ${state.outputs.html ? `- ${target.xmlFile.replace('.xml', '.html')}  → HTML5 semántico y accesible` : ''}
 ${state.outputs.pdfBlob ? `- ${target.xmlFile.replace('.xml', '.pdf')}  → PDF A4 listo para publicar` : ''}
 ${state.outputs.epubBlob ? `- ${target.xmlFile.replace('.xml', '.epub')}  → EPUB 3 accesible (validar con epubcheck)` : ''}
+${(state.outputs.graphics || []).map(g => `- ${g.name}  → ${g.kind === 'table' ? 'Imagen de tabla referenciada por el XML' : 'Imagen de figura referenciada por el XML'}`).join('\n')}
 
 VALIDACIONES RECOMENDADAS:
 - XML: validar contra el esquema ${target.type}
@@ -1793,24 +2276,60 @@ function bind() {
   if(themeBtn) themeBtn.onclick = () => applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
 
 
+  const manualPromptEl = $('#manual-prompt');
+  const manualResponseEl = $('#manual-response');
+  if (manualPromptEl) manualPromptEl.addEventListener('input', updateManualCounters);
+  if (manualResponseEl) manualResponseEl.addEventListener('input', updateManualCounters);
   const manualCopy = $('#btn-manual-copy');
   if (manualCopy) manualCopy.onclick = async () => {
     const txt = $('#manual-prompt').value;
-    try { await navigator.clipboard.writeText(txt); setStatus('Prompt copiado. Pégalo en DeepSeek web.', 'ok'); }
-    catch(e) { $('#manual-prompt').select(); document.execCommand('copy'); setStatus('Prompt seleccionado/copiado. Pégalo en DeepSeek web.', 'ok'); }
+    try { await navigator.clipboard.writeText(txt); setStatus('Prompt copiado completo. Pégalo en la IA.', 'ok'); }
+    catch(e) {
+      const el = $('#manual-prompt');
+      el.focus(); el.setSelectionRange(0, el.value.length); document.execCommand('copy');
+      setStatus('Prompt seleccionado/copiado. Si se corta al pegarlo, usa Descargar prompt.', 'ok');
+    }
+  };
+  const manualDownloadPrompt = $('#btn-manual-download-prompt');
+  if (manualDownloadPrompt) manualDownloadPrompt.onclick = () => {
+    downloadBlob(new Blob([$('#manual-prompt').value], { type: 'text/plain;charset=utf-8' }), 'prompt-editorial-suite.txt');
+    setStatus('Prompt descargado como archivo de texto.', 'ok');
+  };
+  const manualLoadFileBtn = $('#btn-manual-load-file');
+  const manualFileInput = $('#manual-file-input');
+  if (manualLoadFileBtn && manualFileInput) manualLoadFileBtn.onclick = () => manualFileInput.click();
+  if (manualFileInput) manualFileInput.onchange = async () => {
+    const file = manualFileInput.files && manualFileInput.files[0];
+    if (!file) return;
+    const text = await file.text();
+    $('#manual-response').value = text;
+    updateManualCounters();
+    setStatus('Respuesta cargada desde archivo: ' + file.name, 'ok');
+    manualFileInput.value = '';
+  };
+  const manualContinue = $('#btn-manual-continue');
+  if (manualContinue) manualContinue.onclick = () => {
+    const el = $('#manual-response');
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+    el.scrollTop = el.scrollHeight;
+    setStatus('Pega la continuación al final de la respuesta.', 'warn');
   };
   const manualUse = $('#btn-manual-use');
   if (manualUse) manualUse.onclick = () => {
     const response = $('#manual-response').value.trim();
-    if (!response) { alert('Pega primero la respuesta completa de la IA.'); return; }
+    const check = checkManualResponse(manualExpectedKind, response);
+    if (!check.ok) { alert(check.message); updateManualCounters(); return; }
     $('#manual-modal').classList.remove('open');
     if (manualResolver) manualResolver.resolve(response);
     manualResolver = null;
+    manualExpectedKind = '';
   };
   const manualCancel = () => {
     $('#manual-modal').classList.remove('open');
     if (manualResolver) manualResolver.reject(new Error('Proceso manual cancelado por el usuario.'));
     manualResolver = null;
+    manualExpectedKind = '';
   };
   const manualCancelBtn = $('#btn-manual-cancel');
   if (manualCancelBtn) manualCancelBtn.onclick = manualCancel;
@@ -1834,9 +2353,13 @@ function bind() {
   };
 
   $$('[data-close]').forEach(btn => btn.onclick = () => $('#' + btn.dataset.close).classList.remove('open'));
-  $$('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); }));
+  $$('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m && m.id !== 'manual-modal') m.classList.remove('open'); }));
 
   $$('.tab').forEach(t => t.onclick = () => switchTab(t.dataset.tab));
+  const xmlPreviewBtn = $('#btn-xml-preview');
+  if (xmlPreviewBtn) xmlPreviewBtn.onclick = () => setXMLViewMode('preview');
+  const xmlCodeBtn = $('#btn-xml-code');
+  if (xmlCodeBtn) xmlCodeBtn.onclick = () => setXMLViewMode('code');
 
   $$('[data-load]').forEach(b => b.onclick = () => loadFileInto(b.dataset.load));
   $$('[data-clear]').forEach(b => b.onclick = () => {
@@ -1855,7 +2378,7 @@ function bind() {
   $('#btn-clear-all').onclick = () => {
     if (!confirm('¿Limpiar todo?')) return;
     ['article','template','schema'].forEach(k => $(`#${k}-input`).value = '');
-    state.outputs = { xml: '', html: '', pdfBlob: null, epubBlob: null, raw: '' };
+    state.outputs = { xml: '', html: '', pdfBlob: null, epubBlob: null, raw: '', graphics: [] };
     renderXML(''); renderHTML('');
     $('#pdf-container').style.display = 'none';
     $('#pdf-empty').style.display = 'grid';

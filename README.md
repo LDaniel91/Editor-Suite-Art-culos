@@ -13,7 +13,7 @@ El proyecto está pensado para trabajar desde el navegador, tanto en computadora
 - Notas o esquema adicional para orientar la conversión.
 - Selección de base de datos o revista destino.
 - Generación de formatos:
-  - XML editorial.
+  - XML editorial. En destinos JATS/SciELO, las tablas y figuras se referencian como imágenes (`graphic`) y el programa genera los archivos PNG correspondientes para el ZIP.
   - HTML maquetado.
   - PDF de texto derivado del HTML, con fondo blanco, estilos editoriales, texto seleccionable y enlaces clicables.
   - EPUB derivado del HTML.
@@ -33,7 +33,7 @@ El proyecto está pensado para trabajar desde el navegador, tanto en computadora
 5. Si tienes una plantilla HTML de la revista, pégala o cárgala en el bloque correspondiente.
 6. Añade notas adicionales si son necesarias.
 7. Pulsa **Generar archivos**.
-8. Revisa las pestañas XML, HTML, PDF, EPUB, Raw o Paquete.
+8. Revisa las pestañas XML, HTML, PDF, EPUB, Raw o Paquete. En la pestaña XML puedes alternar entre **Vista previa** (el artículo renderizado desde el XML) y **Código XML**.
 9. Descarga el ZIP cuando el resultado esté listo.
 
 ## Configuración de IA
@@ -80,7 +80,7 @@ El archivo `index.html` carga estas librerías desde CDN:
 
 - Mammoth, para leer documentos `.docx`.
 - JSZip, para crear paquetes ZIP y EPUB.
-- jsPDF (incluido en el paquete html2pdf.js), para generar el PDF de texto desde el HTML.
+- jsPDF 2.5.1, para generar el PDF de texto desde el HTML.
 
 Por eso, para usar todas las funciones se recomienda conexión a Internet al abrir la herramienta.
 
@@ -97,7 +97,7 @@ Proyecto en desarrollo. La versión actual se centra en una interfaz única, res
 
 ## Uso sin saldo en USD
 
-Si no puedes recargar una API de pago, usa el proveedor **Manual sin API (DeepSeek web)** en Configuración. El programa mostrará el prompt completo para copiarlo en DeepSeek web u otra IA gratuita; luego pegas la respuesta en la ventana manual y Editorial Suite continúa generando XML, HTML, PDF, EPUB y ZIP.
+Si no puedes recargar una API de pago, usa el proveedor **Manual sin API (DeepSeek web)** en Configuración. El programa mostrará el prompt completo para copiarlo en DeepSeek web u otra IA gratuita; luego pegas la respuesta en la ventana manual y Editorial Suite continúa generando XML, HTML, PDF, EPUB y ZIP. La ventana manual cuenta los caracteres, indica la etiqueta de cierre esperada y no acepta respuestas incompletas: si la IA se corta, pega la continuación al final del mismo cuadro o carga la respuesta desde un archivo .txt, .md, .html o .xml. También puedes descargar el prompt como archivo de texto si el copiado se corta.
 
 También se incluyen opciones gratuitas con límites, como **OpenRouter Free** y **Groq Free**, siempre que puedas registrarte y obtener una API Key sin pago. DeepSeek API requiere saldo prepagado; si devuelve error 402, significa saldo insuficiente.
 
