@@ -1,20 +1,15 @@
-# Editorial Suite — corrección XML por revista
+# Editorial Suite — XML ajustado por base de datos
 
-Reemplaza el `index.html` de tu repositorio por el de este ZIP.
+Versión ajustada según la investigación de formatos de intercambio:
 
-## Qué se corrigió
+- **SciELO:** XML de texto completo **SPS sobre JATS**. Para MEDISAN se mantiene `specific-use="sps-1.9"` del paquete publicado de referencia; otra versión SPS solo si la colección la confirma. Las tablas se convierten a gráficos `gtN` solo en SciELO y el paquete ZIP debe subirse completo.
+- **DOAJ:** **DOAJ Native XML** de metadatos (`records/record`). No es XML de texto completo. El programa advierte si faltan `journalTitle`, `publicationDate`, `title`, `fullTextUrl` o ISSN/EISSN.
+- **Redalyc/AmeliCA:** XML de texto completo **JATS/JATS4R**, con tablas estructuradas `<table>` y sin `specific-use` de SciELO.
+- **Latindex:** metadatos **OAI-PMH + Dublin Core** (`oai_dc`) para interoperabilidad; no es carga JATS.
+- **Dialnet:** metadatos **OAI-PMH Dublin Core** (`oai_dc`) normalizados para cosecha.
+- **LILACS:** registro bibliográfico **LILACS/FI-Admin** con descriptores DeCS/MeSH; no es JATS de texto completo.
+- **Imbiomed:** ficha de metadatos. No se afirma un XML oficial porque no hay esquema público verificable.
+- **Google Scholar:** no acepta carga XML. El resultado operativo son las etiquetas HTML `citation_*`; el archivo XML generado es solo referencia.
+- **Genérico JATS:** **JATS 1.4** de texto completo, con `dtd-version="1.4"`.
 
-- **SciELO/SPS:** el XML final queda con `specific-use="sps-1.9"`, `dtd-version="1.1"` y namespace `xlink`.
-- **MEDISAN:** si el título de la revista es MEDISAN, el programa completa el perfil verificado de la revista: `journal-id` `san`, ISSN epub `1029-3019`, publisher `Centro Provincial de Ciencias Médicas` y licencia CC BY 4.0.
-- **Tablas SciELO:** la IA debe entregar la tabla completa como `<table>` estructurada; el programa genera la imagen `gtN` y deja el XML final con `<graphic>` dentro del ZIP. Así no quedan referencias a imágenes inexistentes.
-- **Redalyc/JATS4R:** ya no recibe las reglas gráficas de SciELO; las tablas quedan como `<table>` estructurada y se retira `specific-use="sps-1.9"` si aparece.
-- **Validación:** además de XML bien formado, el programa avisa si faltan elementos clave de SciELO/SPS o si una tabla Redalyc quedó sin tabla estructurada.
-- **ORCID:** se normaliza a iD desnudo, como en el paquete MEDISAN publicado de referencia.
-- **Elementos vacíos:** se retiran elementos vacíos sin atributos que no deben viajar en el XML.
-
-## Uso
-
-1. Descomprime el ZIP.
-2. Reemplaza el `index.html` de tu repositorio por el nuevo.
-3. Para MEDISAN/SciELO, genera también el HTML o deja que el programa genere los gráficos desde el XML con tablas estructuradas.
-4. Sube a la revista el ZIP completo generado por Editorial Suite, no el XML suelto si el XML referencia imágenes `gt`.
+Uso: reemplaza el `index.html` del repositorio por el de este ZIP. Genera el paquete completo y sube el ZIP cuando el destino incluya gráficos referenciados, especialmente en SciELO.

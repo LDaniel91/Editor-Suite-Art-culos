@@ -519,11 +519,11 @@ Devuelve EXCLUSIVAMENTE el HTML completo, desde <!DOCTYPE html> hasta </html>, c
 
 const TARGETS = {
   scielo: {
-    name: 'SciELO', icon: '📘', type: 'JATS SPS', jats: true,
+    name: 'SciELO', icon: '📘', type: 'SciELO SPS sobre JATS (texto completo)', jats: true,
     xmlFile: 'articulo-scielo.xml',
     xmlPrompt: `ACTÚA COMO ESPECIALISTA EN XML JATS Y SCIELO PUBLISHING SCHEMA (SPS).
 
-Genera un archivo XML JATS válido según el SciELO Publishing Schema (SPS) para el artículo. Usa specific-use="sps-1.9" salvo que las NOTAS indiquen otra versión del SPS.
+Genera un archivo XML JATS válido según el SciELO Publishing Schema (SPS) para el artículo. Usa la versión SPS indicada en las NOTAS; si no se indica y la revista es MEDISAN, usa specific-use="sps-1.9" del paquete publicado de referencia. No asumas otra versión SPS sin confirmación de la colección SciELO.
 
 ESTRUCTURA OBLIGATORIA:
 <article article-type="review-article o research-article según el manuscrito" dtd-version="1.1" specific-use="sps-1.9" xmlns:xlink="http://www.w3.org/1999/xlink" xml:lang="es">
@@ -553,7 +553,7 @@ Incluye citation_volume, citation_issue, citation_firstpage, citation_lastpage, 
 Incluye DC.date solo si consta la fecha; si no consta, omítela.`
   },
   doaj: {
-    name: 'DOAJ', icon: '📗', type: 'DOAJ XML (carga de artículos)',
+    name: 'DOAJ', icon: '📗', type: 'DOAJ Native XML (metadatos)',
     xmlFile: 'doaj-articulo.xml',
     xmlPrompt: `ACTÚA COMO ESPECIALISTA EN EL FORMATO XML DE CARGA DE ARTÍCULOS DE DOAJ (doajArticles.xsd).
 
@@ -582,7 +582,7 @@ Genera un archivo XML con un único <record> dentro de <records> para el artícu
     <keywords language="spa"><keyword>palabra clave</keyword></keywords>
   </record>
 </records>
-Si el artículo es bilingüe repite title, abstract y keywords con language="eng". Contrasta el resultado con el esquema oficial vigente de DOAJ antes de subirlo.
+Si el artículo es bilingüe repite title, abstract y keywords con language="eng". Para carga en DOAJ son imprescindibles journalTitle, publicationDate, title, fullTextUrl y issn o eissn coincidente con el registro DOAJ; si alguno no consta en la fuente, no lo inventes: genera el registro con los datos disponibles y el programa advertirá que no debe subirse hasta completarlo. Contrasta el resultado con el esquema oficial vigente de DOAJ antes de subirlo.
 
 ${COMMON_RULES}
 
@@ -602,7 +602,7 @@ Devuelve EXCLUSIVAMENTE el XML completo (desde <?xml version="1.0" encoding="UTF
 Incluye solo los que consten en la fuente; omite los demás.`
   },
   redalyc: {
-    name: 'Redalyc', icon: '📙', type: 'JATS4R', jats: true,
+    name: 'Redalyc', icon: '📙', type: 'JATS/JATS4R (texto completo)', jats: true,
     xmlFile: 'articulo-redalyc.xml',
     xmlPrompt: `ACTÚA COMO ESPECIALISTA EN XML JATS4R PARA REDALYC/AMELICA.
 
@@ -619,11 +619,11 @@ Devuelve EXCLUSIVAMENTE el XML completo. Sin explicaciones.`,
     htmlExtra: `METADATOS REDALYC en <head>: mismas etiquetas que SciELO (citation_* + DC.*).`
   },
   latindex: {
-    name: 'Latindex', icon: '📒', type: 'Dublin Core + Multiformato', dc: true,
+    name: 'Latindex', icon: '📒', type: 'OAI-PMH + Dublin Core (metadatos)', dc: true,
     xmlFile: 'dublin-core-latindex.xml',
     xmlPrompt: `ACTÚA COMO ESPECIALISTA EN OAI-PMH Y DUBLIN CORE PARA LATINDEX CATÁLOGO 2.0 (Característica 31).
 
-Genera un registro Dublin Core no cualificado (oai_dc) para el artículo.
+Genera un registro de metadatos Dublin Core no cualificado (oai_dc) para interoperabilidad OAI-PMH y metadatos de página. Latindex no recibe un XML JATS de texto completo. Usa como raíz <oai_dc:dc xmlns:oai_dc="http://www.openarchives.org/OAI/2.0/oai_dc/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.openarchives.org/OAI/2.0/oai_dc/ http://www.openarchives.org/OAI/2.0/oai_dc.xsd">.
 
 Elementos (incluye solo los que consten en la fuente; omite los demás sin inventar datos):
 - <dc:title>, <dc:creator> (uno por autor), <dc:subject> (keywords), <dc:description> (resumen), <dc:publisher>, <dc:date> (YYYY-MM-DD), <dc:type>, <dc:format> (text/html + application/pdf), <dc:identifier> (DOI, URL, ISSN), <dc:source>, <dc:language>, <dc:relation>, <dc:rights>
@@ -634,11 +634,11 @@ Devuelve EXCLUSIVAMENTE el XML completo con namespaces oai_dc y dc. Sin explicac
     htmlExtra: `METADATOS LATINDEX en <head>: DC.* estándar. Asegurar disponibilidad en HTML y PDF (más de un formato).`
   },
   dialnet: {
-    name: 'Dialnet', icon: '📕', type: 'Dublin Core no cualificado', dc: true,
+    name: 'Dialnet', icon: '📕', type: 'OAI-PMH Dublin Core oai_dc (metadatos)', dc: true,
     xmlFile: 'dublin-core-dialnet.xml',
     xmlPrompt: `ACTÚA COMO ESPECIALISTA EN OAI-PMH Y DUBLIN CORE NO CUALIFICADO PARA DIALNET.
 
-Genera un registro Dublin Core sin calificar (oai_dc) con NORMALIZACIÓN ESTRICTA exigida por Dialnet (omite los elementos cuyo dato no conste en la fuente):
+Genera un registro de metadatos Dublin Core sin calificar (oai_dc) para cosecha OAI-PMH, con NORMALIZACIÓN ESTRICTA exigida por Dialnet (omite los elementos cuyo dato no conste en la fuente). Dialnet no pide XML JATS de texto completo. Usa como raíz <oai_dc:dc xmlns:oai_dc="http://www.openarchives.org/OAI/2.0/oai_dc/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.openarchives.org/OAI/2.0/oai_dc/ http://www.openarchives.org/OAI/2.0/oai_dc.xsd">.
 
 - <dc:title>: título normalizado, sin todo en mayúsculas.
 - <dc:creator>: uno por autor con formato "Apellido1 Apellido2, Nombre" (apellidos y nombre separados en campos distintos).
@@ -661,11 +661,11 @@ Devuelve EXCLUSIVAMENTE el XML completo con namespaces oai_dc y dc. Sin explicac
     htmlExtra: `METADATOS DIALNET en <head>: DC.title, DC.creator (uno por autor con Apellidos, Nombre), DC.subject (separadas por ;), DC.description, DC.publisher, DC.date, DC.type, DC.format, DC.identifier, DC.source, DC.language, DC.relation, DC.rights.`
   },
   lilacs: {
-    name: 'LILACS', icon: '📓', type: 'LILACS / FI-Admin',
+    name: 'LILACS', icon: '📓', type: 'Registro LILACS/FI-Admin (metadatos)',
     xmlFile: 'metadatos-lilacs.xml',
-    xmlPrompt: `ACTÚA COMO ESPECIALISTA EN EL FORMATO LILACS (BIREME/OPAS/OMS) Y NORMAS DE VANCOUVER PARA CIENCIAS DE LA SALUD.
+    xmlPrompt: `ACTÚA COMO ESPECIALISTA EN LA METODOLOGÍA LILACS (BIREME/OPS/OMS), FI-Admin Y NORMAS DE VANCOUVER PARA CIENCIAS DE LA SALUD.
 
-Genera un archivo XML con los metadatos del artículo estructurados según el formato LILACS (basado en UNISIST Reference Manual), listos para carga en FI-Admin.
+Genera un registro bibliográfico XML de metadatos para captura/catalogación en FI-Admin. LILACS no usa un XML JATS de texto completo: el registro debe describir la fuente y la analítica, con indexación temática DeCS/MeSH. Usa como raíz <lilacs-record>.
 
 Campos obligatorios:
 - title (idioma original + traducción al inglés)
@@ -676,7 +676,7 @@ Campos obligatorios:
 - language (es, en, pt)
 - publication_type
 - abstract (español, inglés, portugués si aplica)
-- keywords (Descriptores en Ciencias de la Salud - DeCS)
+- descriptors (Descriptores en Ciencias de la Salud - DeCS/MeSH; usa <descriptor> por cada descriptor)
 - references (formato Vancouver, con DOI/PMID/URL)
 - doi, url
 
@@ -686,11 +686,11 @@ Devuelve EXCLUSIVAMENTE el XML completo. Sin explicaciones.`,
     htmlExtra: `METADATOS LILACS en <head>: DC.* estándar + <meta name="citation_*">. Asegurar que las REFERENCIAS sigan el estilo VANCOUVER en el HTML.`
   },
   imbiomed: {
-    name: 'Imbiomed', icon: '📔', type: 'Vancouver + Metadatos',
+    name: 'Imbiomed', icon: '📔', type: 'Ficha de metadatos (sin XML público verificable)',
     xmlFile: 'metadatos-imbiomed.xml',
-    xmlPrompt: `ACTÚA COMO ESPECIALISTA EN PUBLICACIONES BIOMÉDICAS Y NORMAS DE VANCOUVER PARA IMBIOMED.
+    xmlPrompt: `ACTÚA COMO ESPECIALISTA EN PUBLICACIONES BIOMÉDICAS Y NORMAS DE VANCOUVER.
 
-Genera un archivo XML con los metadatos del artículo para Imbiomed.
+Genera una ficha XML de metadatos para catalogación/carga manual. Imbiomed no publica un esquema XML de intercambio verificable; no presentes esta ficha como XML oficial de Imbiomed. Usa como raíz <imbiomed-metadata>.
 
 Campos:
 - title (español e inglés)
@@ -709,28 +709,28 @@ Devuelve EXCLUSIVAMENTE el XML completo. Sin explicaciones.`,
     htmlExtra: `METADATOS IMBIOMED en <head>: DC.* + <meta name="citation_*">. En el body, las REFERENCIAS deben seguir VANCOUVER: "Autor AA, Autor BB. Título. Revista. Año;Vol(Num):págs. doi:...".`
   },
   scholar: {
-    name: 'Google Scholar', icon: '📰', type: 'citation_* (referencia Highwire)',
+    name: 'Google Scholar', icon: '📰', type: 'HTML citation_* (no XML de carga)',
     xmlFile: 'metadatos-scholar.xml',
     xmlPrompt: `ACTÚA COMO ESPECIALISTA EN METADATOS HIGHWIRE PRESS (citation_*) PARA GOOGLE SCHOLAR.
 
-Genera un archivo XML con los metadatos que Google Scholar indexará, estructurados como una lista de etiquetas:
+Google Scholar no acepta carga XML: lee el HTML/PDF y las etiquetas <meta name="citation_*"> del HTML. Genera solo una referencia XML bien formada con los valores que deben ir en el <head> HTML, usando atributos content y etiquetas autocerradas:
 
-<metadata>
-  <meta name="citation_title">...</meta>
-  <meta name="citation_author">...</meta> (uno por autor)
-  <meta name="citation_publication_date">YYYY/MM/DD</meta>
-  <meta name="citation_journal_title">...</meta>
-  <meta name="citation_issn">...</meta>
-  <meta name="citation_volume">...</meta>
-  <meta name="citation_issue">...</meta>
-  <meta name="citation_firstpage">...</meta>
-  <meta name="citation_lastpage">...</meta>
-  <meta name="citation_doi">...</meta>
-  <meta name="citation_pdf_url">...</meta>
-  <meta name="citation_abstract_html_url">...</meta>
-  <meta name="citation_fulltext_html_url">...</meta>
-  <meta name="citation_language">es</meta>
-</metadata>
+<scholar-citation-metadata>
+  <meta name="citation_title" content="..."/>
+  <meta name="citation_author" content="..."/> (uno por autor)
+  <meta name="citation_publication_date" content="YYYY/MM/DD"/>
+  <meta name="citation_journal_title" content="..."/>
+  <meta name="citation_issn" content="..."/>
+  <meta name="citation_volume" content="..."/>
+  <meta name="citation_issue" content="..."/>
+  <meta name="citation_firstpage" content="..."/>
+  <meta name="citation_lastpage" content="..."/>
+  <meta name="citation_doi" content="..."/>
+  <meta name="citation_pdf_url" content="..."/>
+  <meta name="citation_abstract_html_url" content="..."/>
+  <meta name="citation_fulltext_html_url" content="..."/>
+  <meta name="citation_language" content="es"/>
+</scholar-citation-metadata>
 
 ${COMMON_RULES}
 
@@ -750,15 +750,15 @@ Devuelve EXCLUSIVAMENTE el XML completo. Sin explicaciones.`,
 <meta name="citation_language" content="es">`
   },
   generic: {
-    name: 'Genérico JATS', icon: '🧬', type: 'JATS 1.4', jats: true,
+    name: 'Genérico JATS', icon: '🧬', type: 'JATS 1.4 (texto completo)', jats: true,
     xmlFile: 'articulo-generico.xml',
     xmlPrompt: `ACTÚA COMO ESPECIALISTA EN JATS 1.4 JOURNAL PUBLISHING DTD.
 
 Genera un XML JATS completo y válido para el artículo.
 
-Estructura: <article article-type="research-article"><front><journal-meta><article-meta>...</article-meta></journal-meta></front><body><sec>...</sec></body><back><ref-list>...</ref-list></back><floats-group>...</floats-group></article>
+Estructura: <article article-type="research-article o review-article según el manuscrito"><front><journal-meta><article-meta>...</article-meta></journal-meta></front><body><sec>...</sec></body><back><ref-list>...</ref-list></back><floats-group>...</floats-group></article>
 
-Metadatos: DOI, título, autores con ORCID, afiliaciones, fechas (received, accepted, published), volumen, número, páginas, abstract, keywords, license.
+Metadatos: título, autores, afiliaciones, abstract y keywords; DOI, ORCID, fechas (received, accepted, published), volumen, número, páginas y license solo si constan en la fuente.
 
 DOCTYPE: <!DOCTYPE article PUBLIC "-//NLM//DTD JATS (Z39.96) Journal Publishing DTD v1.4 20241031//EN" "JATS-journalpublishing1-4.dtd">
 
@@ -1167,10 +1167,12 @@ function normalizeXMLForTarget(xml, targetId) {
   const textOf = n => { const e = first(n); return e ? (e.textContent || '').replace(/\s+/g, ' ').trim() : ''; };
   const make = (name, text) => { const e = doc.createElement(name); if (text != null) e.textContent = text; return e; };
   if (root && local(root) === 'article') {
-    root.setAttribute('dtd-version', '1.1');
+    if (targetId === 'generic') root.setAttribute('dtd-version', '1.4');
+    else if (targetId === 'scielo' || targetId === 'redalyc') root.setAttribute('dtd-version', '1.1');
     if (!root.hasAttribute('xmlns:xlink')) root.setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:xlink', XLINK);
-    if (targetId === 'scielo') root.setAttribute('specific-use', 'sps-1.9');
-    if (targetId === 'redalyc' && root.getAttribute('specific-use') === 'sps-1.9') root.removeAttribute('specific-use');
+    const su = root.getAttribute('specific-use') || '';
+    if (targetId === 'scielo' && !/^sps-/i.test(su)) root.setAttribute('specific-use', 'sps-1.9');
+    if ((targetId === 'redalyc' || targetId === 'generic') && /^sps-/i.test(su)) root.removeAttribute('specific-use');
   }
   // ORCID en formato iD desnudo, como en los paquetes MEDISAN publicados.
   [...doc.getElementsByTagName('contrib-id')].forEach(e => {
@@ -1222,17 +1224,32 @@ function xmlStructureWarnings(xml, target) {
     if (missing) w.push(`${missing} referencia(s) <xref> apuntan a un id que no existe.`);
     const rootEl = doc.documentElement;
     if (state.targetId === 'scielo') {
-      if (rootEl.getAttribute('specific-use') !== 'sps-1.9') w.push('SciELO/SPS requiere specific-use="sps-1.9" en <article>.');
+      if (!/^sps-/i.test(rootEl.getAttribute('specific-use') || '')) w.push('SciELO/SPS requiere specific-use="sps-..." en <article> (sps-1.9 para el perfil MEDISAN de referencia, salvo versión confirmada por la colección).');
       ['journal-id','issn','publisher-name','license'].forEach(n => { if (!has(n)) w.push(`SciELO/SPS: falta <${n}>; complétalo desde la fuente, las NOTAS o el perfil de la revista.`); });
       const lic = doc.getElementsByTagName('license')[0];
       if (lic && !(lic.getAttribute('xlink:href') || lic.getAttribute('href') || '').startsWith('http')) w.push('SciELO/SPS: la licencia no tiene un href válido.');
     }
     if (state.targetId === 'redalyc') {
-      if (rootEl.getAttribute('specific-use') === 'sps-1.9') w.push('Redalyc/JATS4R no debe declarar specific-use="sps-1.9".');
+      if (/^sps-/i.test(rootEl.getAttribute('specific-use') || '')) w.push('Redalyc/JATS4R no debe declarar specific-use de SciELO/SPS.');
       [...doc.getElementsByTagName('table-wrap')].forEach(tw => { if (!tw.getElementsByTagName('table').length) w.push('Redalyc/JATS4R: una tabla quedó sin <table> estructurada.'); });
     }
   } else if (target.dc) {
-    ['dc:title', 'dc:creator'].forEach(n => { if (!has(n)) w.push(`Falta el elemento <${n}>.`); });
+    if (!/dc$/i.test(doc.documentElement.tagName || '')) w.push('La raíz debería ser <oai_dc:dc> para el registro OAI-PMH/Dublin Core.');
+    ['dc:title', 'dc:creator', 'dc:date', 'dc:identifier', 'dc:source'].forEach(n => { if (!has(n)) w.push(`Falta el elemento <${n}> para interoperabilidad OAI-PMH.`); });
+  } else if (state.targetId === 'doaj') {
+    if (doc.documentElement.tagName !== 'records') w.push('DOAJ Native XML: la raíz debería ser <records>.');
+    ['record', 'journalTitle', 'publicationDate', 'title', 'fullTextUrl'].forEach(n => { if (!has(n)) w.push(`DOAJ: falta <${n}>; no subas el XML hasta completarlo desde la fuente.`); });
+    if (!has('issn') && !has('eissn')) w.push('DOAJ: falta <issn> o <eissn> coincidente con el registro DOAJ.');
+  } else if (state.targetId === 'lilacs') {
+    ['title', 'authors', 'source', 'abstract'].forEach(n => { if (!has(n)) w.push(`LILACS/FI-Admin: falta <${n}> en el registro bibliográfico.`); });
+    if (!has('descriptors') && !has('descriptor') && !has('keywords')) w.push('LILACS/FI-Admin: faltan descriptores DeCS/MeSH.');
+  } else if (state.targetId === 'imbiomed') {
+    w.push('Imbiomed no publica un esquema XML verificable: trata este archivo como ficha de metadatos y confirma el canal de carga antes de enviarlo.');
+    ['title', 'authors', 'source', 'abstract'].forEach(n => { if (!has(n)) w.push(`Ficha Imbiomed: falta <${n}>.`); });
+  } else if (state.targetId === 'scholar') {
+    w.push('Google Scholar no acepta carga XML: el resultado operativo son las etiquetas citation_* del HTML generado; este archivo es solo referencia.');
+    const metas = [...doc.getElementsByTagName('meta')].map(e => e.getAttribute('name'));
+    ['citation_title', 'citation_author', 'citation_publication_date'].forEach(n => { if (!metas.includes(n)) w.push(`Google Scholar: falta ${n} en la referencia de metadatos.`); });
   }
   return w;
 }
